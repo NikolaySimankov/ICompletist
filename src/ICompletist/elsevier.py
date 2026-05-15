@@ -208,7 +208,7 @@ def enrich_scopus_abstracts(
             "apiKey": api_key,
             "httpAccept": "application/json",
             "field": "dc:identifier,dc:description",
-            "count": min(_BATCH_SIZE, limit - start),
+            "count": len(batch),
         }
         try:
             response = requests.get(_BASE_URL, params=params, timeout=30)

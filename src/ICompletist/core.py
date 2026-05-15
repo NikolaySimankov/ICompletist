@@ -89,13 +89,11 @@ class ICompletist:
         self,
         articles: List[Dict],
         only_missing: bool = True,
-        batch_size: int = 25,
     ) -> List[Dict]:
         """Fetch full abstracts for Scopus articles in batches.
 
         Mutates each article dict in-place and returns the list.
         only_missing=True (default) skips articles that already have an abstract.
-        batch_size controls how many IDs are queried per request (default 25).
         """
         if not self.elsevier_api_key:
             raise ValueError("elsevier_api_key is required to fetch Scopus abstracts.")
@@ -103,7 +101,6 @@ class ICompletist:
             articles,
             api_key=self.elsevier_api_key,
             only_missing=only_missing,
-            batch_size=batch_size,
         )
 
     # --------------------------------------------------------- Google Scholar
