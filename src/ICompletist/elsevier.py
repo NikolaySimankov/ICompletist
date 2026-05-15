@@ -8,7 +8,7 @@ from typing import List, Dict, Optional
 
 _BASE_URL = "https://api.elsevier.com/content/search/scopus"
 # 25 = hard ceiling for standard API keys; raise to 200 with institutional access
-_BATCH_SIZE = 200
+_BATCH_SIZE = 25
 
 
 def build_scopus_query(spec: dict) -> str:
