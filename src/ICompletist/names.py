@@ -47,21 +47,3 @@ def get_common_names_from_wikidata(
     except Exception as e:
         print(f"  Wikidata error: {e}")
         return []
-
-
-def build_all_names_json(
-    plant_species: str,
-    email: str = "research@example.com",
-) -> List[str]:
-    """
-    Auto-discover all names for all plants and save to JSON.
-    """
-
-    print(f"  {plant_species}...", end=" ")
-
-    # Try Wikidata first (free, fast)
-    names = get_common_names_from_wikidata(plant_species, email)
-
-    print(f"✓ Found {len(names)} names: {', '.join(names)}")
-
-    return names

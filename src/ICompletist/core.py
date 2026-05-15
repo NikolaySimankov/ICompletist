@@ -4,7 +4,10 @@ ICompletist – unified search client for PubMed, Scopus, and Google Scholar.
 
 from typing import List, Dict, Optional
 
-from .pubmed import search_pubmed as _search_pubmed, fetch_article_data as _fetch_article_data
+from .pubmed import (
+    search_pubmed as _search_pubmed,
+    fetch_article_data as _fetch_article_data,
+)
 from .elsevier import search_scopus as _search_scopus
 from .scholar import search_scholar as _search_scholar
 
@@ -41,6 +44,10 @@ class ICompletist:
 
     def search_pubmed(self, query: str, limit: int = 20000) -> List[Dict]:
         """Search PubMed: fetch PMIDs then retrieve full article metadata."""
+        if not self.pubmed_api_key:
+            print(
+                "pubmed_api_key is not compulsory to search PubMed but it makes the requests faster."
+            )
         pmids = _search_pubmed(
             query,
             limit=limit,
