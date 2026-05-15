@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "ICompletist"
+version = "0.1.0"
+description = "Plant-Pathogen DB: automated PubMed literature mining"
+requires-python = ">=3.9"
+dependencies = [
+    "requests",
+    "boto3",
+    "beautifulsoup4",
+    "lxml",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
