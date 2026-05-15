@@ -14,21 +14,6 @@ from typing import Optional
 from bs4 import BeautifulSoup
 
 
-def normalize_pmcid(pmcid):
-    """
-    Convertit un PMCID en format standard sans 'PMC'
-    Exemple:
-        PMC11370360 -> 11370360
-        11370360 -> 11370360
-    """
-    pmcid = str(pmcid).strip().upper()
-
-    if pmcid.startswith("PMC"):
-        pmcid = pmcid[3:]
-
-    return pmcid
-
-
 def get_available_versions(s3_client, pmcid):
     """
     Récupère les versions disponibles d'un article PMC

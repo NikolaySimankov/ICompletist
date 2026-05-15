@@ -10,8 +10,7 @@ from .pubmed import (
     extract_text_from_element,
     fetch_article_data,
 )
-from .pdf import normalize_pmcid, get_pdf, get_pdf_pmc, get_pdf_doi, get_pdf_cell
-from .pipeline import batch_extract_pubmed
+from .get_pdf import get_pdf, get_pdf_pmc, get_pdf_doi, get_pdf_cell
 from .elsevier import build_scopus_query, search_scopus
 from .scholar import build_scholar_query, search_scholar
 

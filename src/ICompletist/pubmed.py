@@ -8,7 +8,20 @@ import html
 import time
 from typing import List, Dict, Optional
 
-from .pdf import normalize_pmcid
+
+def normalize_pmcid(pmcid):
+    """
+    Convertit un PMCID en format standard sans 'PMC'
+    Exemple:
+        PMC11370360 -> 11370360
+        11370360 -> 11370360
+    """
+    pmcid = str(pmcid).strip().upper()
+
+    if pmcid.startswith("PMC"):
+        pmcid = pmcid[3:]
+
+    return pmcid
 
 
 def build_pubmed_query(spec: dict) -> str:
