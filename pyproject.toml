@@ -12,6 +12,7 @@ dependencies = [
     "boto3",
     "beautifulsoup4",
     "lxml",
+    "serpapi",
 ]
 
 [tool.setuptools.packages.find]

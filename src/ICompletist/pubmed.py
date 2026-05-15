@@ -8,34 +8,34 @@ import html
 import time
 from typing import List, Dict, Optional
 
-from .pdf import normalize_pmcid, get_pdf
+from .pdf import normalize_pmcid
 
 
-def build_pubmed_query(
-    common_names: List[str],
-    keywords1: List[str],
-    keywords2: List[str],
-    exceptions: List[str],
-) -> str:
+def build_pubmed_query(spec: dict) -> str:
     """
-    Build standardized PubMed query using proper field syntax.
+    Build a boolean search query string from a spec dict.
+
+    spec:
+        field   : field tag appended to every term (default "[All Fields]")
+        groups  : list of group dicts, each containing:
+                    terms    : list[str]
+                    internal : "OR" | "AND"  – logic between terms inside the group
+                    external : "AND" | "OR" | "NOT" – how this group joins
+                               the preceding query; omit or None for the first group
     """
-    # Build plant search terms
-    plant_terms = [f'"{name}"[All Fields]' for name in common_names]
-    plant_part = "(" + " OR ".join(plant_terms) + ")"
+    field = spec.get("field", "[All Fields]")
+    groups = spec["groups"]
 
-    # Build keyword search terms
-    keyword1_terms = [f'"{kw}"[All Fields]' for kw in keywords1]
-    keyword1_part = "(" + " OR ".join(keyword1_terms) + ")"
+    def _render(group):
+        op = group.get("internal", "OR")
+        tagged = [f'"{t}"{field}' for t in group["terms"]]
+        return "(" + f" {op} ".join(tagged) + ")"
 
-    # Build secondary keyword search terms
-    keyword2_terms = [f'"{kw}"[All Fields]' for kw in keywords2]
-    keyword2_part = "(" + " OR ".join(keyword2_terms) + ")"
+    query = _render(groups[0])
+    for group in groups[1:]:
+        external = group.get("external", "AND")
+        query = f"{query} {external} {_render(group)}"
 
-    exception_terms = [f'"{kw}"[All Fields]' for kw in exceptions]
-    exception_part = "(" + " AND ".join(exception_terms) + ")"
-
-    query = f"{plant_part} AND {keyword1_part} AND {keyword2_part} NOT {exception_part}"
     return query
 
 
@@ -43,6 +43,7 @@ def search_pubmed(
     query: str,
     limit: int = 20000,
     email: str = "research@example.com",
+    api_key: str = "",
 ) -> List[str]:
     """
     Search PubMed via NCBI Entrez ESearch API.
@@ -62,7 +63,7 @@ def search_pubmed(
             "retstart": retstart,
             "retmode": "json",
             "email": email,
-            "api_key": "b845a525f9db4f0c0148206bced6b07c7408",
+            "api_key": api_key,
         }
 
         try:
@@ -126,10 +127,12 @@ def extract_text_from_element(elem) -> str:
 
 
 def fetch_article_data(
-    pmids: List[str], email: str = "research@example.com", path: Optional[str] = "."
+    pmids: List[str],
+    email: str = "research@example.com",
+    api_key: str = "",
 ) -> List[Dict]:
     """
-    Fetch article data (title, abstract, year, DOI, sections) from NCBI EFetch.
+    Fetch article data (title, abstract, year, DOI) from NCBI EFetch.
     """
     base_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
     articles = []
@@ -144,7 +147,7 @@ def fetch_article_data(
             "rettype": "abstract",
             "retmode": "xml",
             "email": email,
-            "api_key": "b845a525f9db4f0c0148206bced6b07c7408",
+            "api_key": api_key,
         }
 
         try:
@@ -192,28 +195,18 @@ def fetch_article_data(
                 doi = article_ids.get("doi")
                 pii = article_ids.get("pii")
 
-                article_data = {
-                    "pmid": pmid,
-                    "pmcid": pmcid or None,
-                    "pii": pii or None,
-                    "source_doi": doi or None,
-                    "source_url": f"https://www.ncbi.nlm.nih.gov/pubmed/{pmid}",
-                    "title": title,
-                    "abstract": abstract,
-                    "year": year,
-                }
-
-                try:
-                    file = get_pdf(pmcid, doi, pmid, path)
-
-                    # Merge filepath into article_data
-                    article_data.update(file)
-
-                except Exception as e:
-                    print(f"      ⚠️  Fetch error for PMID : {pmid}: {e}")
-                    pass
-
-                articles.append(article_data)
+                articles.append(
+                    {
+                        "pmid": pmid,
+                        "pmcid": pmcid or None,
+                        "pii": pii or None,
+                        "source_doi": doi or None,
+                        "source_url": f"https://www.ncbi.nlm.nih.gov/pubmed/{pmid}",
+                        "title": title,
+                        "abstract": abstract,
+                        "year": year,
+                    }
+                )
 
             if articles:
                 print(f"      Fetched {len(articles)} articles (batch {i//200 + 1})")

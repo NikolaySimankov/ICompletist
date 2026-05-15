@@ -30,8 +30,7 @@ def main():
         result = batch_extract_pubmed(
             plant,
             limit=20000,
-            email=email,  # Full coverage
-            path=output_subdir,
+            email=email,
         )
 
         # Step 3: Export to JSON
