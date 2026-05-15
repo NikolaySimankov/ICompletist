@@ -242,3 +242,14 @@ def fetch_article_data(
 
     print(f"    ✓ Fetched metadata for {len(articles)} articles")
     return articles
+
+
+def search_pubmed_articles(
+    query: str,
+    limit: int = 20000,
+    email: str = "research@example.com",
+    api_key: str = "",
+) -> List[Dict]:
+    """Search PubMed and fetch full metadata + abstracts in one call."""
+    pmids = search_pubmed(query, limit=limit, email=email, api_key=api_key)
+    return fetch_article_data(pmids, email=email, api_key=api_key)

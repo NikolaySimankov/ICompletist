@@ -5,12 +5,11 @@ ICompletist – unified search client for PubMed, Scopus, and Google Scholar.
 from typing import List, Dict, Optional
 
 from .pubmed import (
-    search_pubmed as _search_pubmed,
+    search_pubmed_articles as _search_pubmed_articles,
     fetch_article_data as _fetch_article_data,
 )
 from .elsevier import (
-    search_scopus as _search_scopus,
-    fetch_scopus_abstract as _fetch_scopus_abstract,
+    search_scopus_articles as _search_scopus_articles,
     enrich_scopus_abstracts as _enrich_scopus_abstracts,
 )
 from .scholar import search_scholar as _search_scholar
@@ -47,19 +46,14 @@ class ICompletist:
     # ------------------------------------------------------------------ PubMed
 
     def search_pubmed(self, query: str, limit: int = 20000) -> List[Dict]:
-        """Search PubMed: fetch PMIDs then retrieve full article metadata."""
+        """Search PubMed and fetch full article metadata + abstracts."""
         if not self.pubmed_api_key:
             print(
                 "pubmed_api_key is not compulsory to search PubMed but it makes the requests faster."
             )
-        pmids = _search_pubmed(
+        return _search_pubmed_articles(
             query,
             limit=limit,
-            email=self.email,
-            api_key=self.pubmed_api_key,
-        )
-        return _fetch_article_data(
-            pmids,
             email=self.email,
             api_key=self.pubmed_api_key,
         )
@@ -74,15 +68,18 @@ class ICompletist:
 
     # ----------------------------------------------------------------- Scopus
 
-    def search_scopus(self, query: str, limit: int = 5000) -> List[Dict]:
-        """Search Scopus via the Elsevier API."""
+    def search_scopus(
+        self, query: str, limit: int = 5000, max_workers: int = 5
+    ) -> List[Dict]:
+        """Search Scopus and enrich with full abstracts via the Elsevier API."""
         if not self.elsevier_api_key:
             raise ValueError("elsevier_api_key is required to search Scopus.")
-        return _search_scopus(
+        return _search_scopus_articles(
             query,
             limit=limit,
             api_key=self.elsevier_api_key,
             email=self.email,
+            max_workers=max_workers,
         )
 
     def enrich_scopus_abstracts(

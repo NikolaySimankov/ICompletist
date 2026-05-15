@@ -215,3 +215,15 @@ def enrich_scopus_abstracts(
 
     print("    ✓ Abstract enrichment complete")
     return articles
+
+
+def search_scopus_articles(
+    query: str,
+    limit: int = 10000,
+    api_key: str = "",
+    email: str = "research@example.com",
+    max_workers: int = 5,
+) -> List[Dict]:
+    """Search Scopus and enrich with full abstracts in one call."""
+    articles = search_scopus(query, limit=limit, api_key=api_key, email=email)
+    return enrich_scopus_abstracts(articles, api_key=api_key, max_workers=max_workers)
