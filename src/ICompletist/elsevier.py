@@ -49,10 +49,11 @@ def build_scopus_query(spec: dict) -> str:
             external = "AND NOT"
         query = f"{query} {external} {_render(group)}"
 
+    # Scopus only supports strict > / <, so shift by 1 to make the range inclusive
     if year_from := spec.get("year_from"):
-        query += f" AND PUBYEAR >= {year_from}"
+        query += f" AND PUBYEAR > {year_from - 1}"
     if year_to := spec.get("year_to"):
-        query += f" AND PUBYEAR <= {year_to}"
+        query += f" AND PUBYEAR < {year_to + 1}"
 
     return query
 
