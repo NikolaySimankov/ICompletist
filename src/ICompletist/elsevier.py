@@ -4,6 +4,7 @@ Elsevier / Scopus API – search and article metadata fetching.
 
 import requests
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict, Optional
 
 _BASE_URL = "https://api.elsevier.com/content/search/scopus"
@@ -174,13 +175,14 @@ def enrich_scopus_abstracts(
     articles: List[Dict],
     api_key: str = "",
     only_missing: bool = True,
+    max_workers: int = 5,
 ) -> List[Dict]:
     """
-    Fetch full abstracts for Scopus articles in batches using the Search API
-    with SCOPUS-ID() queries and field=dc:description.
+    Fetch full abstracts via the Abstract Retrieval API (one request per article)
+    using concurrent requests to minimise wall time.
 
-    Reduces N individual calls to N/batch_size calls.
     only_missing=True (default) skips articles that already have an abstract.
+    max_workers controls concurrency (default 5 — safe for standard API keys).
     """
     targets = [
         a
@@ -193,38 +195,23 @@ def enrich_scopus_abstracts(
 
     print(
         f"    Fetching abstracts for {len(targets)}/{len(articles)} articles"
-        f" ({_BATCH_SIZE} per request)..."
+        f" ({max_workers} concurrent)..."
     )
 
-    id_to_article = {a["scopus_id"]: a for a in targets}
-    ids = list(id_to_article)
-    fetched = 0
+    done = 0
 
-    for i in range(0, len(ids), _BATCH_SIZE):
-        batch = ids[i : i + _BATCH_SIZE]
-        query = " OR ".join(f"SCOPUS-ID({sid})" for sid in batch)
-        params = {
-            "query": query,
-            "apiKey": api_key,
-            "httpAccept": "application/json",
-            "field": "dc:identifier,dc:description",
-            "count": len(batch),
-        }
-        try:
-            response = requests.get(_BASE_URL, params=params, timeout=30)
-            response.raise_for_status()
-            entries = response.json().get("search-results", {}).get("entry", [])
-            for entry in entries:
-                sid = entry.get("dc:identifier", "").replace("SCOPUS_ID:", "")
-                abstract = entry.get("dc:description")
-                if sid in id_to_article and abstract:
-                    id_to_article[sid]["abstract"] = abstract
-        except Exception as e:
-            print(f"      ⚠️  Batch error (start={i}): {e}")
+    def _fetch(article):
+        abstract = fetch_scopus_abstract(article["scopus_id"], api_key)
+        if abstract:
+            article["abstract"] = abstract
 
-        fetched += len(batch)
-        print(f"      {fetched}/{len(ids)}")
-        time.sleep(0.1)
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        futures = {pool.submit(_fetch, a): a for a in targets}
+        for future in as_completed(futures):
+            future.result()
+            done += 1
+            if done % 25 == 0:
+                print(f"      {done}/{len(targets)}")
 
     print("    ✓ Abstract enrichment complete")
     return articles

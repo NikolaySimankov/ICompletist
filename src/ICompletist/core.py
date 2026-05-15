@@ -89,11 +89,13 @@ class ICompletist:
         self,
         articles: List[Dict],
         only_missing: bool = True,
+        max_workers: int = 5,
     ) -> List[Dict]:
-        """Fetch full abstracts for Scopus articles in batches.
+        """Fetch full abstracts via the Abstract Retrieval API with concurrent requests.
 
         Mutates each article dict in-place and returns the list.
         only_missing=True (default) skips articles that already have an abstract.
+        max_workers controls concurrency (default 5).
         """
         if not self.elsevier_api_key:
             raise ValueError("elsevier_api_key is required to fetch Scopus abstracts.")
@@ -101,6 +103,7 @@ class ICompletist:
             articles,
             api_key=self.elsevier_api_key,
             only_missing=only_missing,
+            max_workers=max_workers,
         )
 
     # --------------------------------------------------------- Google Scholar
