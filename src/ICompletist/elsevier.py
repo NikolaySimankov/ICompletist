@@ -163,8 +163,8 @@ def fetch_scopus_abstract(scopus_id: str, api_key: str = "") -> Optional[str]:
         data = response.json()
         return (
             data.get("abstracts-retrieval-response", {})
-                .get("coredata", {})
-                .get("dc:description")
+            .get("coredata", {})
+            .get("dc:description")
         )
     except Exception:
         return None
@@ -176,25 +176,55 @@ def enrich_scopus_abstracts(
     only_missing: bool = True,
 ) -> List[Dict]:
     """
-    Fetch full abstracts for Scopus articles using the Abstract Retrieval API
-    and write them back into each article dict in-place.
+    Fetch full abstracts for Scopus articles in batches using the Search API
+    with SCOPUS-ID() queries and field=dc:description.
 
+    Reduces N individual calls to N/batch_size calls.
     only_missing=True (default) skips articles that already have an abstract.
     """
     targets = [
-        a for a in articles
+        a
+        for a in articles
         if a.get("scopus_id") and (not only_missing or not a.get("abstract"))
     ]
 
-    print(f"    Fetching abstracts for {len(targets)}/{len(articles)} articles...")
+    if not targets:
+        return articles
 
-    for i, article in enumerate(targets, 1):
-        abstract = fetch_scopus_abstract(article["scopus_id"], api_key)
-        if abstract:
-            article["abstract"] = abstract
-        if i % 25 == 0:
-            print(f"      {i}/{len(targets)}")
+    print(
+        f"    Fetching abstracts for {len(targets)}/{len(articles)} articles"
+        f" ({_BATCH_SIZE} per request)..."
+    )
+
+    id_to_article = {a["scopus_id"]: a for a in targets}
+    ids = list(id_to_article)
+    fetched = 0
+
+    for i in range(0, len(ids), _BATCH_SIZE):
+        batch = ids[i : i + _BATCH_SIZE]
+        query = " OR ".join(f"SCOPUS-ID({sid})" for sid in batch)
+        params = {
+            "query": query,
+            "apiKey": api_key,
+            "httpAccept": "application/json",
+            "field": "dc:identifier,dc:description",
+            "count": min(_BATCH_SIZE, limit - start),
+        }
+        try:
+            response = requests.get(_BASE_URL, params=params, timeout=30)
+            response.raise_for_status()
+            entries = response.json().get("search-results", {}).get("entry", [])
+            for entry in entries:
+                sid = entry.get("dc:identifier", "").replace("SCOPUS_ID:", "")
+                abstract = entry.get("dc:description")
+                if sid in id_to_article and abstract:
+                    id_to_article[sid]["abstract"] = abstract
+        except Exception as e:
+            print(f"      ⚠️  Batch error (start={i}): {e}")
+
+        fetched += len(batch)
+        print(f"      {fetched}/{len(ids)}")
         time.sleep(0.1)
 
-    print(f"    ✓ Abstract enrichment complete")
+    print("    ✓ Abstract enrichment complete")
     return articles

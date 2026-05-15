@@ -14,6 +14,7 @@ from ICompletist import (
     build_scopus_query,
     build_scholar_query,
     get_common_names_from_wikidata,
+    enrich_scopus_abstracts,
 )
 
 # ── Configuration ─────────────────────────────────────────────────────────────
@@ -87,6 +88,7 @@ spec = {
 print("\n🔍 STEP 2b: Searching Scopus...")
 scopus_query = build_scopus_query(spec)
 scopus_articles = client.search_scopus(scopus_query, limit=LIMIT_SCOPUS)
+scopus_articles = client.enrich_scopus_abstracts(scopus_articles)
 
 with open(subdir / "scopus.json", "w") as f:
     json.dump(scopus_articles, f, indent=2)
