@@ -91,10 +91,18 @@ class ICompletist:
         year_from: Optional[int] = None,
         year_to: Optional[int] = None,
         lang: str = "en",
+        spec: Optional[dict] = None,
     ) -> List[Dict]:
-        """Search Google Scholar via SerpApi."""
+        """Search Google Scholar via SerpApi.
+
+        year_from / year_to can be supplied directly or read from a spec dict
+        (spec values are overridden by explicit arguments when both are given).
+        """
         if not self.serpapi_api_key:
             raise ValueError("serpapi_api_key is required to search Google Scholar.")
+        if spec:
+            year_from = year_from if year_from is not None else spec.get("year_from")
+            year_to = year_to if year_to is not None else spec.get("year_to")
         return _search_scholar(
             query,
             limit=limit,

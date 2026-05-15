@@ -15,17 +15,23 @@ def build_scholar_query(spec: dict) -> str:
     """
     Build a Google Scholar query string from a spec dict.
 
-    Same spec structure as build_query() / build_scopus_query(), but produces
-    Google Scholar syntax:
+    Same spec structure as build_pubmed_query() / build_scopus_query(), but
+    produces Google Scholar syntax:
         ("term" OR "term")  for inclusive groups
         -"term" -"term"     for excluded terms  (external: "NOT")
 
+    Note: Google Scholar year filtering is an API parameter, not a query token.
+    year_from / year_to in the spec are intentionally ignored here; pass them
+    directly to search_scholar() or ICompletist.search_scholar().
+
     spec:
-        groups : list of group dicts, each with:
-                   terms    : list[str]
-                   internal : "OR" | "AND" – logic between terms in the group
-                   external : "AND" | "NOT" – how this group joins the preceding
-                              query; omit or None for the first group
+        year_from : int – ignored (pass to search_scholar instead)
+        year_to   : int – ignored (pass to search_scholar instead)
+        groups    : list of group dicts, each with:
+                      terms    : list[str]
+                      internal : "OR" | "AND" – logic between terms in the group
+                      external : "AND" | "NOT" – how this group joins the preceding
+                                 query; omit or None for the first group
     """
     groups = spec["groups"]
     parts = []

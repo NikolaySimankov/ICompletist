@@ -29,12 +29,14 @@ def build_pubmed_query(spec: dict) -> str:
     Build a boolean search query string from a spec dict.
 
     spec:
-        field   : field tag appended to every term (default "[All Fields]")
-        groups  : list of group dicts, each containing:
-                    terms    : list[str]
-                    internal : "OR" | "AND"  – logic between terms inside the group
-                    external : "AND" | "OR" | "NOT" – how this group joins
-                               the preceding query; omit or None for the first group
+        field     : field tag appended to every term (default "[All Fields]")
+        year_from : int – earliest publication year (inclusive)
+        year_to   : int – latest publication year (inclusive)
+        groups    : list of group dicts, each containing:
+                      terms    : list[str]
+                      internal : "OR" | "AND"  – logic between terms inside the group
+                      external : "AND" | "OR" | "NOT" – how this group joins
+                                 the preceding query; omit or None for the first group
     """
     field = spec.get("field", "[All Fields]")
     groups = spec["groups"]
@@ -48,6 +50,13 @@ def build_pubmed_query(spec: dict) -> str:
     for group in groups[1:]:
         external = group.get("external", "AND")
         query = f"{query} {external} {_render(group)}"
+
+    year_from = spec.get("year_from")
+    year_to = spec.get("year_to")
+    if year_from or year_to:
+        start = f"{year_from}/1/1" if year_from else "1000/1/1"
+        end = f"{year_to}/12/31" if year_to else "3000/1/1"
+        query += f" AND ({start}:{end}[pdat])"
 
     return query
 

@@ -6,30 +6,32 @@ import requests
 import time
 from typing import List, Dict, Optional
 
-_DEFAULT_API_KEY = "d226c24cefe9a52aca7ef3152b7ebb09"
 _BASE_URL = "https://api.elsevier.com/content/search/scopus"
-_BATCH_SIZE = 25
+# 25 = hard ceiling for standard API keys; raise to 200 with institutional access
+_BATCH_SIZE = 200
 
 
 def build_scopus_query(spec: dict) -> str:
     """
     Build a Scopus boolean query string from a spec dict.
 
-    Same structure as build_query() but produces Scopus field-operator syntax:
+    Same structure as build_pubmed_query() but produces Scopus field-operator syntax:
         FIELD("term")  instead of  "term"[FIELD]
 
     spec:
-        field   : Scopus field operator for groups that don't override it
-                  (default "ALL"). Common values:
-                    "ALL"            – all fields
-                    "TITLE-ABS-KEY"  – title, abstract, keywords
-                    "TITLE"          – title only
-        groups  : list of group dicts, each with:
-                    terms    : list[str]
-                    field    : optional per-group field override
-                    internal : "OR" | "AND"  – logic between terms in the group
-                    external : "AND" | "OR" | "AND NOT" – how this group joins
-                               the preceding query; omit or None for the first group
+        field     : Scopus field operator for groups that don't override it
+                    (default "ALL"). Common values:
+                      "ALL"            – all fields
+                      "TITLE-ABS-KEY"  – title, abstract, keywords
+                      "TITLE"          – title only
+        year_from : int – earliest publication year (inclusive)
+        year_to   : int – latest publication year (inclusive)
+        groups    : list of group dicts, each with:
+                      terms    : list[str]
+                      field    : optional per-group field override
+                      internal : "OR" | "AND"  – logic between terms in the group
+                      external : "AND" | "OR" | "AND NOT" – how this group joins
+                                 the preceding query; omit or None for the first group
     """
     default_field = spec.get("field", "ALL")
     groups = spec["groups"]
@@ -47,13 +49,18 @@ def build_scopus_query(spec: dict) -> str:
             external = "AND NOT"
         query = f"{query} {external} {_render(group)}"
 
+    if year_from := spec.get("year_from"):
+        query += f" AND PUBYEAR >= {year_from}"
+    if year_to := spec.get("year_to"):
+        query += f" AND PUBYEAR <= {year_to}"
+
     return query
 
 
 def search_scopus(
     query: str,
-    limit: int = 20000,
-    api_key: str = _DEFAULT_API_KEY,
+    limit: int = 10000,
+    api_key: str = "",
     email: str = "research@example.com",
 ) -> List[Dict]:
     """

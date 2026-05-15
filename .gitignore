@@ -51,9 +51,7 @@ coverage.xml
 .pytest_cache/
 cover/
 
-data/
-.dawgz/
-logs/
+results/
 *.tsv
 *.csv
 *.pkl
