@@ -65,6 +65,8 @@ class ICompletist:
 
     def search_scopus(self, query: str, limit: int = 5000) -> List[Dict]:
         """Search Scopus via the Elsevier API."""
+        if not self.elsevier_api_key:
+            raise ValueError("elsevier_api_key is required to search Scopus.")
         return _search_scopus(
             query,
             limit=limit,
@@ -84,6 +86,8 @@ class ICompletist:
         lang: str = "en",
     ) -> List[Dict]:
         """Search Google Scholar via SerpApi."""
+        if not self.serpapi_api_key:
+            raise ValueError("serpapi_api_key is required to search Google Scholar.")
         return _search_scholar(
             query,
             limit=limit,
