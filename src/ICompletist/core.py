@@ -8,7 +8,11 @@ from .pubmed import (
     search_pubmed as _search_pubmed,
     fetch_article_data as _fetch_article_data,
 )
-from .elsevier import search_scopus as _search_scopus
+from .elsevier import (
+    search_scopus as _search_scopus,
+    fetch_scopus_abstract as _fetch_scopus_abstract,
+    enrich_scopus_abstracts as _enrich_scopus_abstracts,
+)
 from .scholar import search_scholar as _search_scholar
 
 
@@ -80,6 +84,20 @@ class ICompletist:
             api_key=self.elsevier_api_key,
             email=self.email,
         )
+
+    def enrich_scopus_abstracts(
+        self,
+        articles: List[Dict],
+        only_missing: bool = True,
+    ) -> List[Dict]:
+        """Fetch full abstracts for Scopus articles via the Abstract Retrieval API.
+
+        Mutates each article dict in-place and returns the list.
+        only_missing=True (default) skips articles that already have an abstract.
+        """
+        if not self.elsevier_api_key:
+            raise ValueError("elsevier_api_key is required to fetch Scopus abstracts.")
+        return _enrich_scopus_abstracts(articles, api_key=self.elsevier_api_key, only_missing=only_missing)
 
     # --------------------------------------------------------- Google Scholar
 

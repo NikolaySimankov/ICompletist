@@ -11,7 +11,7 @@ from .pubmed import (
     fetch_article_data,
 )
 from .get_pdf import get_pdf, get_pdf_pmc, get_pdf_doi, get_pdf_cell
-from .elsevier import build_scopus_query, search_scopus
+from .elsevier import build_scopus_query, search_scopus, fetch_scopus_abstract, enrich_scopus_abstracts
 from .scholar import build_scholar_query, search_scholar
 
 __all__ = [
@@ -29,6 +29,8 @@ __all__ = [
     "batch_extract_pubmed",
     "build_scopus_query",
     "search_scopus",
+    "fetch_scopus_abstract",
+    "enrich_scopus_abstracts",
     "build_scholar_query",
     "search_scholar",
 ]

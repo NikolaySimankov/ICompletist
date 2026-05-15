@@ -7,8 +7,9 @@ import time
 from typing import List, Dict, Optional
 
 _BASE_URL = "https://api.elsevier.com/content/search/scopus"
+_ABSTRACT_URL = "https://api.elsevier.com/content/abstract/scopus_id/{}"
 # 25 = hard ceiling for standard API keys; raise to 200 with institutional access
-_BATCH_SIZE = 25
+_BATCH_SIZE = 200
 
 
 def build_scopus_query(spec: dict) -> str:
@@ -146,4 +147,54 @@ def search_scopus(
             continue
 
     print(f"    ✓ Found {len(articles)} articles on Scopus")
+    return articles
+
+
+def fetch_scopus_abstract(scopus_id: str, api_key: str = "") -> Optional[str]:
+    """
+    Fetch the full abstract for a single article via the Abstract Retrieval API.
+    Returns the abstract string, or None if unavailable.
+    """
+    url = _ABSTRACT_URL.format(scopus_id)
+    params = {"httpAccept": "application/json", "apiKey": api_key}
+    try:
+        response = requests.get(url, params=params, timeout=30)
+        response.raise_for_status()
+        data = response.json()
+        return (
+            data.get("abstracts-retrieval-response", {})
+                .get("coredata", {})
+                .get("dc:description")
+        )
+    except Exception:
+        return None
+
+
+def enrich_scopus_abstracts(
+    articles: List[Dict],
+    api_key: str = "",
+    only_missing: bool = True,
+) -> List[Dict]:
+    """
+    Fetch full abstracts for Scopus articles using the Abstract Retrieval API
+    and write them back into each article dict in-place.
+
+    only_missing=True (default) skips articles that already have an abstract.
+    """
+    targets = [
+        a for a in articles
+        if a.get("scopus_id") and (not only_missing or not a.get("abstract"))
+    ]
+
+    print(f"    Fetching abstracts for {len(targets)}/{len(articles)} articles...")
+
+    for i, article in enumerate(targets, 1):
+        abstract = fetch_scopus_abstract(article["scopus_id"], api_key)
+        if abstract:
+            article["abstract"] = abstract
+        if i % 25 == 0:
+            print(f"      {i}/{len(targets)}")
+        time.sleep(0.1)
+
+    print(f"    ✓ Abstract enrichment complete")
     return articles
