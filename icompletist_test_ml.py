@@ -21,7 +21,7 @@ from ICompletist import (
 
 EMAIL = "nikolay.simankov@uliege.be"
 PUBMED_API_KEY = "b845a525f9db4f0c0148206bced6b07c7408"
-ELSEVIER_API_KEY = "6f487b578187bc934010e301da4a3f59"
+ELSEVIER_API_KEY = "d226c24cefe9a52aca7ef3152b7ebb09"
 # SERPAPI_API_KEY = "fad594a2e6229aa5d6d24782051ae670962db47e9dc213edcc34d46522de61a3"
 
 OUTPUT_DIR = Path("results")
@@ -48,12 +48,13 @@ subdir.mkdir(exist_ok=True)
 
 # Shared query spec(same groups, different syntax per source)
 spec = {
-    "year_from": 2010,
+    "year_from": 2016,
     "year_to": 2026,
     "groups": [
         {
             "terms": [
                 "vector prediction",
+                "transmission",
                 "virus-host",
                 "reservoir",
                 "host range",
@@ -64,6 +65,19 @@ spec = {
         },
         {
             "terms": [
+                "plant virology",
+                "plant virus",
+                "phytovirus",
+                "phytovirology",
+                "virology",
+                "virus",
+                "phage",
+            ],
+            "internal": "OR",
+            "external": "AND",
+        },
+        {
+            "terms": [
                 "machine learning",
                 "deep learning",
                 "artificial intelligence",
@@ -71,25 +85,27 @@ spec = {
             "internal": "OR",
             "external": "AND",
         },
-        {
-            "terms": [
-                "plant virology",
-                "plant virus",
-                "phytovirus",
-                "phytovirology",
-            ],
-            "internal": "OR",
-            "external": "AND",
-        },
     ],
 }
+
+# ── PubMed ────────────────────────────────────────────────────────────────
+print("\n🔍 STEP 2a: Searching PubMed...")
+pubmed_query = build_pubmed_query(spec)
+pubmed_articles = client.search_pubmed(pubmed_query, limit=LIMIT_PUBMED)
+
+with open(subdir / "pubmed.json", "w") as f:
+    json.dump(pubmed_articles, f, indent=2)
+
+print(f"    ✓ Saved {len(pubmed_articles)} articles → {subdir / 'pubmed.json'}")
+
 
 # ── Scopus ────────────────────────────────────────────────────────────────
 print("\n🔍 STEP 2b: Searching Scopus...")
 scopus_query = build_scopus_query(spec)
 scopus_articles = client.search_scopus(scopus_query, limit=LIMIT_SCOPUS)
-scopus_articles = client.enrich_scopus_abstracts(scopus_articles)
+# scopus_articles = client.enrich_scopus_abstracts(scopus_articles)
 
 with open(subdir / "scopus.json", "w") as f:
     json.dump(scopus_articles, f, indent=2)
+
 print(f"    ✓ Saved {len(scopus_articles)} articles → {subdir / 'scopus.json'}")

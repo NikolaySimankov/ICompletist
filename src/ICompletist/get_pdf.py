@@ -1,5 +1,5 @@
 """
-Part 2 (PDF) – PDF download helpers for PMC, publisher DOI pages, and Cell.
+PDF – PDF download helpers for PMC, Cell, publisher DOI pages.
 """
 
 import requests
@@ -101,7 +101,7 @@ def get_pdf_doi(
     filename: str,
 ) -> None:
     """
-    Download the PDF file for a given DOI from Sci-Hub.
+    Download the PDF file for a given DOI from Cell.
     """
     headers = {
         "User-Agent": (
@@ -170,7 +170,7 @@ def get_pdf(
 ) -> None:
     """
     Download a PDF file from a given URL.
-    Try PMC first, then fallback to Sci-Hub if DOI is available.
+    Try PMC first, then fallback to Cell if DOI is available.
     """
 
     Path(path).mkdir(parents=True, exist_ok=True)
@@ -199,7 +199,7 @@ def get_pdf(
         except Exception as e:
             pass
 
-        # 3. Sci-Hub fallback
+        # 3. Cell fallback
         try:
             get_pdf_cell(doi, str(filename))
 
