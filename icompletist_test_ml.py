@@ -108,3 +108,47 @@ with open(subdir / "scopus.json", "w") as f:
     json.dump(scopus_articles, f, indent=2)
 
 print(f"    ✓ Saved {len(scopus_articles)} articles → {subdir / 'scopus.json'}")
+
+client.load(subdir / "scopus.json")
+
+spec = {
+    "year_from": 2016,
+    "year_to": 2026,
+    "groups": [
+        {
+            "terms": [
+                "vector prediction",
+                "transmission",
+                "virus-host",
+                "reservoir",
+                "host range",
+                "host prediction",
+                "host-virus",
+            ],
+            "internal": "OR",
+        },
+        {
+            "terms": [
+                "plant virology",
+                "plant virus",
+                "phytovirus",
+                "phytovirology",
+                # "virology",
+                # "virus",
+                # "phage",
+                # "bacteriophage",
+            ],
+            "internal": "OR",
+            "external": "AND",
+        },
+        {
+            "terms": [
+                "machine learning",
+                "deep learning",
+                "artificial intelligence",
+            ],
+            "internal": "OR",
+            "external": "AND",
+        },
+    ],
+}

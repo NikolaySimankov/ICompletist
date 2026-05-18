@@ -175,7 +175,9 @@ class ICompletist:
         Uses the same group/terms/internal/external logic as the query builders,
         applied as a text search on each article's title and abstract.
         """
-        return select_articles(self.articles, spec)
+        results = select_articles(self.articles, spec)
+        print(f"    ✓ Selected {len(results)} articles matching the spec")
+        return results
 
     def clear(self) -> None:
         """Reset the internal article store."""

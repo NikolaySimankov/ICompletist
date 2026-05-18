@@ -222,7 +222,7 @@ def fetch_article_data(
                         "pmid": pmid,
                         "pmcid": pmcid or None,
                         "pii": pii or None,
-                        "source_doi": doi or None,
+                        "doi": doi or None,
                         "source_url": f"https://www.ncbi.nlm.nih.gov/pubmed/{pmid}",
                         "title": title,
                         "abstract": abstract,
