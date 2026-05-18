@@ -173,14 +173,36 @@ class ICompletist:
         self._merge(articles, source_label)
         print(f"    ✓ Loaded {len(articles)} articles into the store")
 
-    def select(self, spec: dict) -> List[Dict]:
-        """Filter the internal store using a spec dict and return matching articles.
+    def select(
+        self,
+        spec: Optional[dict] = None,
+        has_pdf: Optional[bool] = None,
+        has_pmid: Optional[bool] = None,
+        has_abstract: Optional[bool] = None,
+        has_scopus: Optional[bool] = None,
+    ) -> List[Dict]:
+        """Filter the internal store and return matching articles.
 
-        Uses the same group/terms/internal/external logic as the query builders,
-        applied as a text search on each article's title and abstract.
+        spec         : keyword spec dict (text search on title + abstract)
+        has_pdf      : True → only articles with a downloaded PDF path
+        has_pmid     : True → only articles with a PMID
+        has_abstract : True → only articles with a non-empty abstract
+        has_scopus   : True → only articles with a Scopus ID
+
+        All conditions are combined with AND.
         """
-        results = select_articles(self.articles, spec)
-        print(f"    ✓ Selected {len(results)} articles matching the spec")
+        results = select_articles(self.articles, spec) if spec else self.articles
+
+        if has_pdf is not None:
+            results = [a for a in results if bool(a.get("pdf_path")) == has_pdf]
+        if has_pmid is not None:
+            results = [a for a in results if bool(a.get("pmid")) == has_pmid]
+        if has_abstract is not None:
+            results = [a for a in results if bool(a.get("abstract")) == has_abstract]
+        if has_scopus is not None:
+            results = [a for a in results if bool(a.get("scopus_id")) == has_scopus]
+
+        print(f"    ✓ Selected {len(results)} articles")
         return results
 
     def get_pdf(
