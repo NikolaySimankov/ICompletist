@@ -88,6 +88,7 @@ spec = {
 }
 
 # ── PubMed ────────────────────────────────────────────────────────────────
+
 print("\n🔍 STEP 2a: Searching PubMed...")
 pubmed_query = build_pubmed_query(spec)
 pubmed_articles = client.search_pubmed(pubmed_query, limit=LIMIT_PUBMED)
@@ -99,6 +100,7 @@ print(f"    ✓ Saved {len(pubmed_articles)} articles → {subdir / 'pubmed.json
 
 
 # ── Scopus ────────────────────────────────────────────────────────────────
+
 print("\n🔍 STEP 2b: Searching Scopus...")
 scopus_query = build_scopus_query(spec)
 scopus_articles = client.search_scopus(scopus_query, limit=LIMIT_SCOPUS)
@@ -111,7 +113,11 @@ print(f"    ✓ Saved {len(scopus_articles)} articles → {subdir / 'scopus.json
 
 client.load(subdir / "scopus.json")
 
-spec = {
+# ── Load ──────────────────────────────────────────────────────────────────
+
+client.load(subdir / "ViroML.json")
+
+spec2 = {
     "year_from": 2016,
     "year_to": 2026,
     "groups": [
@@ -152,3 +158,5 @@ spec = {
         },
     ],
 }
+
+articles = client.select(spec2)

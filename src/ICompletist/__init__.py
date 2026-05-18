@@ -11,7 +11,13 @@ from .pubmed import (
     fetch_article_data,
     search_pubmed_articles,
 )
-from .get_pdf import get_pdf, get_pdf_pmc, get_pdf_doi, get_pdf_cell
+from .get_pdf import (
+    get_pdf,
+    get_pdf_pmc,
+    get_pdf_doi,
+    get_pdf_scihub,
+    get_pdf_institution,
+)
 from .elsevier import (
     build_scopus_query,
     search_scopus,
@@ -32,9 +38,10 @@ __all__ = [
     "fetch_article_data",
     "normalize_pmcid",
     "get_pdf",
+    "get_pdf_institution",
     "get_pdf_pmc",
     "get_pdf_doi",
-    "get_pdf_cell",
+    "get_pdf_scihub",
     "batch_extract_pubmed",
     "build_scopus_query",
     "search_scopus",

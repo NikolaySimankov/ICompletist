@@ -2,7 +2,7 @@
 PDF – PDF download helpers for PMC, Cell, publisher DOI pages.
 """
 
-import requests
+import stealth_requests as scraper
 from urllib.parse import urlparse
 
 import boto3
@@ -12,25 +12,6 @@ from pathlib import Path
 
 from typing import Optional
 from bs4 import BeautifulSoup
-
-
-def get_available_versions(s3_client, pmcid):
-    """
-    Récupère les versions disponibles d'un article PMC
-    """
-    prefix = f"PMC{pmcid}."
-
-    response = s3_client.list_objects_v2(
-        Bucket="pmc-oa-opendata", Prefix=prefix, Delimiter="/"
-    )
-
-    versions = []
-
-    for cp in response.get("CommonPrefixes", []):
-        folder = cp["Prefix"].rstrip("/")
-        versions.append(folder)
-
-    return versions
 
 
 def is_pdf_bytes(content: bytes) -> bool:
@@ -45,7 +26,23 @@ def get_pdf_pmc(
     Download the PDF file for a given PMCID from the PMC Open Access Subset.
     """
 
-    pmcid = normalize_pmcid(pmcid)
+    def get_available_versions(s3_client, pmcid):
+        """
+        Récupère les versions disponibles d'un article PMC
+        """
+        prefix = f"PMC{pmcid}."
+
+        response = s3_client.list_objects_v2(
+            Bucket="pmc-oa-opendata", Prefix=prefix, Delimiter="/"
+        )
+
+        versions = []
+
+        for cp in response.get("CommonPrefixes", []):
+            folder = cp["Prefix"].rstrip("/")
+            versions.append(folder)
+
+        return versions
 
     s3 = boto3.client(
         "s3", config=Config(signature_version=UNSIGNED), region_name="us-east-1"
@@ -68,19 +65,19 @@ def get_pdf_pmc(
     )
 
 
-def get_pdf_cell(
+def get_pdf_scihub(
     doi: str,
     filename: str,
 ) -> None:
     """
-    Download the PDF file for a given DOI from Cell.
+    Download the PDF file for a given DOI from Sci-Hub.
     """
 
-    base_url = "https://cell.com"
+    base_url = "https://sci-hub.fr"
 
     # Build full URL if it's a relative path
     html_url = base_url + "/" + doi
-    response = requests.get(html_url)
+    response = scraper.get(html_url)
 
     # Step 1 — Parse the HTML
     soup = BeautifulSoup(response.content, "html.parser")
@@ -89,7 +86,7 @@ def get_pdf_cell(
     href = soup.select_one("div.download a")["href"]
 
     pdf_url = base_url + href
-    response = requests.get(pdf_url)
+    response = scraper.get(pdf_url)
     # Now use the extracted URL
     if is_pdf_bytes(response.content):
         with open(filename, "wb") as f:
@@ -112,7 +109,7 @@ def get_pdf_doi(
     }
 
     doi_url = f"https://doi.org/{doi}"
-    response = requests.get(
+    response = scraper.get(
         doi_url,
         allow_redirects=True,
     )
@@ -129,7 +126,7 @@ def get_pdf_doi(
         pdf_url = pdf_tag["content"]
 
         # Now use the extracted URL
-        response = requests.get(pdf_url, headers=headers)
+        response = scraper.get(pdf_url, headers=headers)
         if is_pdf_bytes(response.content):
             with open(filename, "wb") as f:
                 f.write(response.content)
@@ -145,7 +142,7 @@ def get_pdf_doi(
         # Build full URL from a relative path
         epdf_url = "https://" + domain + href
 
-        response = requests.get(epdf_url, headers)
+        response = scraper.get(epdf_url, headers)
         soup = BeautifulSoup(response.content, "html.parser")
 
         href = soup.find("a", {"class": "btn--bordered__light"})["href"]
@@ -154,12 +151,50 @@ def get_pdf_doi(
         pdf_url = "https://" + domain + href
 
         # Now use the extracted URL
-        response = requests.get(pdf_url, headers=headers)
+        response = scraper.get(pdf_url, headers=headers)
         if is_pdf_bytes(response.content):
             with open(filename, "wb") as f:
                 f.write(response.content)
         else:
             return pdf_url
+
+
+def get_pdf_institution(
+    pmcid: str,
+    doi: str,
+    pmid: Optional[str] = None,
+    path: Optional[str] = ".",
+) -> None:
+    """
+    Download a PDF file from a given URL.
+    Try PMC first, then fallback to Cell if DOI is available.
+    """
+
+    Path(path).mkdir(parents=True, exist_ok=True)
+    filename = Path(path) / f"{pmid}.pdf"
+
+    # 1. PMC
+    if pmcid:
+        try:
+            get_pdf_pmc(pmcid, str(filename))
+
+            if filename.exists():
+                return {"file_path": str(filename)}
+
+        except Exception as e:
+            pass
+
+    # 2. DOI publisher download
+    if doi:
+        try:
+
+            get_pdf_doi(doi, str(filename))
+
+            if filename.exists():
+                return {"file_path": str(filename)}
+
+        except Exception as e:
+            pass
 
 
 def get_pdf(
@@ -199,9 +234,9 @@ def get_pdf(
         except Exception as e:
             pass
 
-        # 3. Cell fallback
+        # 3. Sci-Hub fallback
         try:
-            get_pdf_cell(doi, str(filename))
+            get_pdf_scihub(doi, str(filename))
 
             if filename.exists():
                 return {"file_path": str(filename)}

@@ -11,10 +11,14 @@ from .pubmed import (
     fetch_article_data as _fetch_article_data,
 )
 from .elsevier import (
+    search_scopus as _search_scopus,
     search_scopus_articles as _search_scopus_articles,
     enrich_scopus_abstracts as _enrich_scopus_abstracts,
 )
 from .scholar import search_scholar as _search_scholar
+from .get_pdf import get_pdf as _get_pdf
+from .get_pdf import get_pdf_institution as _get_pdf_institution
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
 def select_articles(articles: List[Dict], spec: dict) -> List[Dict]:
@@ -179,6 +183,136 @@ class ICompletist:
         print(f"    ✓ Selected {len(results)} articles matching the spec")
         return results
 
+    def get_pdf(
+        self,
+        path: str = ".",
+        articles: Optional[List[Dict]] = None,
+        max_workers: int = 2,
+    ) -> List[Dict]:
+        """Download PDFs for articles in the store (or a provided list).
+
+        Tries PMC first, then publisher DOI page, then Cell fallback.
+        Writes ``pdf_path`` into each article dict in-place.
+        Returns the list of articles that have a pdf_path set after the run.
+        """
+        targets = articles if articles is not None else self.articles
+
+        def _fetch(article):
+            result = _get_pdf(
+                pmcid=article.get("pmcid"),
+                doi=article.get("doi") or article.get("source_doi"),
+                pmid=article.get("pmid"),
+                path=path,
+            )
+            article["pdf_path"] = result.get("file_path") if result else None
+
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            futures = {pool.submit(_fetch, a): a for a in targets}
+            done = 0
+            for future in as_completed(futures):
+                future.result()
+                done += 1
+                if done % 25 == 0:
+                    print(f"      {done}/{len(targets)} PDFs attempted")
+
+        downloaded = [a for a in targets if a.get("pdf_path")]
+        print(f"    ✓ Downloaded {len(downloaded)}/{len(targets)} PDFs → {path}")
+        return downloaded
+
+    def get_pdf_institution(
+        self,
+        path: str = ".",
+        articles: Optional[List[Dict]] = None,
+        max_workers: int = 2,
+    ) -> List[Dict]:
+        """Download PDFs for articles in the store (or a provided list).
+
+        Tries PMC first, then publisher DOI page, then Cell fallback.
+        Writes ``pdf_path`` into each article dict in-place.
+        Returns the list of articles that have a pdf_path set after the run.
+        """
+        targets = articles if articles is not None else self.articles
+
+        def _fetch(article):
+            result = _get_pdf_institution(
+                pmcid=article.get("pmcid"),
+                doi=article.get("doi") or article.get("source_doi"),
+                pmid=article.get("pmid"),
+                path=path,
+            )
+            article["pdf_path"] = result.get("file_path") if result else None
+
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            futures = {pool.submit(_fetch, a): a for a in targets}
+            done = 0
+            for future in as_completed(futures):
+                future.result()
+                done += 1
+                if done % 25 == 0:
+                    print(f"      {done}/{len(targets)} PDFs attempted")
+
+        downloaded = [a for a in targets if a.get("pdf_path")]
+        print(f"    ✓ Downloaded {len(downloaded)}/{len(targets)} PDFs → {path}")
+        return downloaded
+
+    def enrich(self, max_workers: int = 5) -> None:
+        """Cross-enrich the store from both PubMed and Scopus.
+
+        - PubMed pass: batch-fetches metadata for every article that has a
+          ``pmid`` but was not originally sourced from PubMed.
+        - Scopus pass: searches Scopus by DOI for every article that has a
+          DOI but no ``scopus_id``, then enriches abstracts concurrently.
+
+        Scopus data keeps its priority in the merge (fills / overwrites).
+        PubMed data only fills null gaps.
+        """
+        all_articles = self.articles
+
+        # ── PubMed pass ──────────────────────────────────────────────────────
+        pmids = [
+            a["pmid"]
+            for a in all_articles
+            if a.get("pmid") and a.get("_source") != "pubmed"
+        ]
+        if pmids:
+            print(f"  PubMed enrichment: fetching {len(pmids)} articles by PMID...")
+            results = _fetch_article_data(
+                pmids, email=self.email, api_key=self.pubmed_api_key
+            )
+            self._merge(results, "pubmed")
+
+        # ── Scopus pass ──────────────────────────────────────────────────────
+        if not self.elsevier_api_key:
+            return
+
+        dois = [
+            a.get("doi") or a.get("source_doi")
+            for a in all_articles
+            if not a.get("scopus_id") and (a.get("doi") or a.get("source_doi"))
+        ]
+        if not dois:
+            return
+
+        print(f"  Scopus enrichment: searching {len(dois)} articles by DOI...")
+        # Batch into chunks of 25 to stay within query-string limits
+        scopus_hits = []
+        for i in range(0, len(dois), 25):
+            batch = dois[i : i + 25]
+            query = " OR ".join(f'DOI("{d}")' for d in batch)
+            scopus_hits.extend(
+                _search_scopus(
+                    query,
+                    limit=len(batch),
+                    api_key=self.elsevier_api_key,
+                    email=self.email,
+                )
+            )
+        _enrich_scopus_abstracts(
+            scopus_hits, api_key=self.elsevier_api_key, max_workers=max_workers
+        )
+        self._merge(scopus_hits, "scopus")
+        print(f"  ✓ Enrichment complete — store now has {len(self._articles)} articles")
+
     def clear(self) -> None:
         """Reset the internal article store."""
         self._articles.clear()
@@ -198,6 +332,7 @@ class ICompletist:
             api_key=self.pubmed_api_key,
         )
         self._merge(results, "pubmed")
+        self.enrich()
         return results
 
     def fetch_pubmed(self, pmids: List[str]) -> List[Dict]:
@@ -213,7 +348,7 @@ class ICompletist:
     # ----------------------------------------------------------------- Scopus
 
     def search_scopus(
-        self, query: str, limit: int = 5000, max_workers: int = 5
+        self, query: str, limit: int = 5000, max_workers: int = 2
     ) -> List[Dict]:
         """Search Scopus, enrich with full abstracts, and merge into the store."""
         if not self.elsevier_api_key:
@@ -226,19 +361,20 @@ class ICompletist:
             max_workers=max_workers,
         )
         self._merge(results, "scopus")
+        self.enrich()
         return results
 
     def enrich_scopus_abstracts(
         self,
         articles: List[Dict],
         only_missing: bool = True,
-        max_workers: int = 5,
+        max_workers: int = 2,
     ) -> List[Dict]:
         """Fetch full abstracts via the Abstract Retrieval API with concurrent requests.
 
         Mutates each article dict in-place and returns the list.
         only_missing=True (default) skips articles that already have an abstract.
-        max_workers controls concurrency (default 5).
+        max_workers controls concurrency (default 2).
         """
         if not self.elsevier_api_key:
             raise ValueError("elsevier_api_key is required to fetch Scopus abstracts.")
@@ -281,4 +417,5 @@ class ICompletist:
             year_to=year_to,
         )
         self._merge(results, "scholar")
+        self.enrich()
         return results
