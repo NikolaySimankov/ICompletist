@@ -2,7 +2,7 @@
 ICompletist – Plant-Pathogen DB: automated PubMed literature mining.
 """
 
-from .core import ICompletist
+from .core import ICompletist, select_articles
 from .names import get_common_names_from_wikidata
 from .pubmed import (
     build_pubmed_query,
@@ -23,6 +23,7 @@ from .scholar import build_scholar_query, search_scholar
 
 __all__ = [
     "ICompletist",
+    "select_articles",
     "get_common_names_from_wikidata",
     "build_pubmed_query",
     "search_pubmed",

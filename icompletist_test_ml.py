@@ -13,8 +13,6 @@ from ICompletist import (
     build_pubmed_query,
     build_scopus_query,
     build_scholar_query,
-    get_common_names_from_wikidata,
-    enrich_scopus_abstracts,
 )
 
 # ── Configuration ─────────────────────────────────────────────────────────────
@@ -72,6 +70,7 @@ spec = {
                 "virology",
                 "virus",
                 "phage",
+                "bacteriophage",
             ],
             "internal": "OR",
             "external": "AND",

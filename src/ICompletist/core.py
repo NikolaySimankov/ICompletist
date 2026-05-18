@@ -17,6 +17,53 @@ from .elsevier import (
 from .scholar import search_scholar as _search_scholar
 
 
+def select_articles(articles: List[Dict], spec: dict) -> List[Dict]:
+    """Filter *articles* using the same spec dict logic as the query builders.
+
+    Each article's title and abstract are searched (case-insensitive).
+
+    spec groups:
+        terms    : list[str] – keywords to look for
+        internal : "OR" | "AND"  – how terms combine inside a group (default OR)
+        external : "AND" | "OR" | "NOT" | "AND NOT" – how this group joins the
+                   preceding result; omit or None for the first group
+    """
+
+    def _match_group(text: str, group: dict) -> bool:
+        internal = group.get("internal", "OR")
+        terms = group["terms"]
+        if internal == "AND":
+            return all(t.lower() in text for t in terms)
+        return any(t.lower() in text for t in terms)
+
+    def _matches(article: Dict) -> bool:
+        text = " ".join(
+            filter(
+                None,
+                [
+                    article.get("title") or "",
+                    article.get("abstract") or "",
+                    article.get("snippet") or "",
+                ],
+            )
+        ).lower()
+
+        groups = spec["groups"]
+        result = _match_group(text, groups[0])
+        for group in groups[1:]:
+            external = (group.get("external") or "AND").upper()
+            match = _match_group(text, group)
+            if external in ("NOT", "AND NOT"):
+                result = result and not match
+            elif external == "OR":
+                result = result or match
+            else:  # AND
+                result = result and match
+        return result
+
+    return [a for a in articles if _matches(a)]
+
+
 class ICompletist:
     """
     Unified search client.
@@ -121,6 +168,14 @@ class ICompletist:
         )
         self._merge(articles, source_label)
         print(f"    ✓ Loaded {len(articles)} articles into the store")
+
+    def select(self, spec: dict) -> List[Dict]:
+        """Filter the internal store using a spec dict and return matching articles.
+
+        Uses the same group/terms/internal/external logic as the query builders,
+        applied as a text search on each article's title and abstract.
+        """
+        return select_articles(self.articles, spec)
 
     def clear(self) -> None:
         """Reset the internal article store."""
