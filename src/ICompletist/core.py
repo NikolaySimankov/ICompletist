@@ -225,6 +225,7 @@ class ICompletist:
                 doi=article.get("doi") or article.get("source_doi"),
                 pmid=article.get("pmid"),
                 path=path,
+                email=self.email,
             )
             article["pdf_path"] = result.get("file_path") if result else None
 

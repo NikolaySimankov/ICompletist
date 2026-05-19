@@ -22,12 +22,21 @@ def build_scopus_query(spec: dict) -> str:
 
     spec:
         field     : Scopus field operator for groups that don't override it
-                    (default "ALL"). Common values:
-                      "ALL"            – all fields
-                      "TITLE-ABS-KEY"  – title, abstract, keywords
-                      "TITLE"          – title only
+                    (default "TITLE-ABS-KEY"). Common values:
+                      "TITLE-ABS-KEY"  – title, abstract, keywords (recommended)
+                      "ALL"            – all fields (noisier)
+                      "TITLE"          – title only (strictest)
         year_from : int – earliest publication year (inclusive)
         year_to   : int – latest publication year (inclusive)
+        doctype   : list[str] – document types to include. Defaults to
+                    ["ar", "re", "cp"] (articles and reviews only). Set to [] or
+                    None to disable the filter. Common codes:
+                      "ar"  article
+                      "re"  review
+                      "cp"  conference paper
+                      "ch"  book chapter
+                      "le"  letter
+                      "ed"  editorial
         groups    : list of group dicts, each with:
                       terms    : list[str]
                       field    : optional per-group field override
@@ -56,6 +65,12 @@ def build_scopus_query(spec: dict) -> str:
         query += f" AND PUBYEAR > {year_from - 1}"
     if year_to := spec.get("year_to"):
         query += f" AND PUBYEAR < {year_to + 1}"
+
+    # Document type filter — default: articles and reviews only
+    doctypes = spec.get("doctype", ["ar", "re", "cp"])
+    if doctypes:
+        dtype_expr = " OR ".join(f"DOCTYPE({d})" for d in doctypes)
+        query += f" AND ({dtype_expr})"
 
     return query
 

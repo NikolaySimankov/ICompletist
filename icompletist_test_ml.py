@@ -20,6 +20,8 @@ from ICompletist import (
 EMAIL = "nikolay.simankov@uliege.be"
 PUBMED_API_KEY = "b845a525f9db4f0c0148206bced6b07c7408"
 ELSEVIER_API_KEY = "d226c24cefe9a52aca7ef3152b7ebb09"
+SPRINGER_API_KEY = "3a871f81ddcaf16763dedea73b30a8a6"
+WILEY_API_KEY = "29f27f75-7f6b-4101-8088-23bdda872bf1"
 # SERPAPI_API_KEY = "fad594a2e6229aa5d6d24782051ae670962db47e9dc213edcc34d46522de61a3"
 
 OUTPUT_DIR = Path("results")
@@ -34,6 +36,8 @@ client = ICompletist(
     email=EMAIL,
     pubmed_api_key=PUBMED_API_KEY,
     elsevier_api_key=ELSEVIER_API_KEY,
+    springer_api_key=SPRINGER_API_KEY,
+    wiley_api_key=WILEY_API_KEY,
     # serpapi_api_key=SERPAPI_API_KEY,
 )
 
@@ -52,7 +56,11 @@ spec = {
         {
             "terms": [
                 "vector prediction",
+                "zoonosis",
+                "zoonotic",
                 "transmission",
+                "epidemiology",
+                "spillover",
                 "virus-host",
                 "reservoir",
                 "host range",
@@ -124,7 +132,11 @@ spec2 = {
         {
             "terms": [
                 "vector prediction",
+                "zoonosis",
+                "zoonotic",
                 "transmission",
+                "epidemiology",
+                "spillover",
                 "virus-host",
                 "reservoir",
                 "host range",
@@ -139,10 +151,10 @@ spec2 = {
                 "plant virus",
                 "phytovirus",
                 "phytovirology",
-                # "virology",
-                # "virus",
-                # "phage",
-                # "bacteriophage",
+                "virology",
+                "virus",
+                "phage",
+                "bacteriophage",
             ],
             "internal": "OR",
             "external": "AND",
@@ -160,3 +172,6 @@ spec2 = {
 }
 
 articles = client.select(spec2)
+
+with open(subdir / "ViroML.json", "w") as f:
+    json.dump(articles, f, indent=2)
