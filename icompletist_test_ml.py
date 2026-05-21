@@ -22,6 +22,9 @@ PUBMED_API_KEY = "b845a525f9db4f0c0148206bced6b07c7408"
 ELSEVIER_API_KEY = "d226c24cefe9a52aca7ef3152b7ebb09"
 SPRINGER_API_KEY = "3a871f81ddcaf16763dedea73b30a8a6"
 WILEY_API_KEY = "29f27f75-7f6b-4101-8088-23bdda872bf1"
+IEEEXPLORE_API_KEY = "82qv2vapxr896qhpsgx6m8re"
+SEMANTIC_SCHOLAR_API_KEY = "s2k-UoC8TNT1ORPQiktYsUDRwL4TfkkB7sxyncUxjAZE"
+CORE_API_KEY = "bxZDG5SNrHwTOiI9MtYapPjBL6oV4mv7"
 # SERPAPI_API_KEY = "fad594a2e6229aa5d6d24782051ae670962db47e9dc213edcc34d46522de61a3"
 
 OUTPUT_DIR = Path("results")
@@ -30,14 +33,14 @@ LIMIT_PUBMED = 10000
 LIMIT_SCOPUS = 5000
 LIMIT_SCHOLAR = 100
 
-# ── Client ────────────────────────────────────────────────────────────────────
+# ── icompletist ────────────────────────────────────────────────────────────────────
 
-client = ICompletist(
+icompletist = ICompletist(
     email=EMAIL,
     pubmed_api_key=PUBMED_API_KEY,
     elsevier_api_key=ELSEVIER_API_KEY,
-    springer_api_key=SPRINGER_API_KEY,
-    wiley_api_key=WILEY_API_KEY,
+    # springer_api_key=SPRINGER_API_KEY,
+    # wiley_api_key=WILEY_API_KEY,
     # serpapi_api_key=SERPAPI_API_KEY,
 )
 
@@ -99,31 +102,30 @@ spec = {
 
 print("\n🔍 STEP 2a: Searching PubMed...")
 pubmed_query = build_pubmed_query(spec)
-pubmed_articles = client.search_pubmed(pubmed_query, limit=LIMIT_PUBMED)
+pubmed_articles = icompletist.search_pubmed(pubmed_query, limit=LIMIT_PUBMED)
 
-with open(subdir / "pubmed.json", "w") as f:
-    json.dump(pubmed_articles, f, indent=2)
+# with open(subdir / "pubmed.json", "w") as f:
+#     json.dump(pubmed_articles, f, indent=2)
 
-print(f"    ✓ Saved {len(pubmed_articles)} articles → {subdir / 'pubmed.json'}")
+# print(f"    ✓ Saved {len(pubmed_articles)} articles → {subdir / 'pubmed.json'}")
 
 
 # ── Scopus ────────────────────────────────────────────────────────────────
 
 print("\n🔍 STEP 2b: Searching Scopus...")
 scopus_query = build_scopus_query(spec)
-scopus_articles = client.search_scopus(scopus_query, limit=LIMIT_SCOPUS)
-# scopus_articles = client.enrich_scopus_abstracts(scopus_articles)
+scopus_articles = icompletist.search_scopus(scopus_query, limit=LIMIT_SCOPUS)
 
-with open(subdir / "scopus.json", "w") as f:
-    json.dump(scopus_articles, f, indent=2)
+# with open(subdir / "scopus.json", "w") as f:
+# json.dump(scopus_articles, f, indent=2)
 
-print(f"    ✓ Saved {len(scopus_articles)} articles → {subdir / 'scopus.json'}")
+# print(f"    ✓ Saved {len(scopus_articles)} articles → {subdir / 'scopus.json'}")
 
-client.load(subdir / "scopus.json")
+# icompletist.load(subdir / "scopus.json")
 
 # ── Load ──────────────────────────────────────────────────────────────────
 
-client.load(subdir / "ViroML.json")
+icompletist.load(subdir / "ViroML.json")
 
 spec2 = {
     "year_from": 2016,
@@ -171,7 +173,7 @@ spec2 = {
     ],
 }
 
-articles = client.select(spec2)
+articles = icompletist.select(spec2)
 
 with open(subdir / "ViroML.json", "w") as f:
     json.dump(articles, f, indent=2)
