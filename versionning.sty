@@ -1,0 +1,41 @@
+\section{ML/DL in phage virology}\label{sec:phage_virology}
+
+\subsection{Data types}
+
+Organize by modality and typical dataset structure:
+
+- Genomic and metagenomic sequences  
+  - Viral contigs and complete genomes from isolates and metagenomes; often paired with host genomes or at least host taxonomic labels. [pubmed.ncbi.nlm.nih](https://pubmed.ncbi.nlm.nih.gov/40359589/)
+  - Large unlabeled sequence corpora used for self‑supervised representation learning or protein language models. [institut-vision](https://www.institut-vision.org/en/news/machine-learning-meets-microbiology-advance-personalized-phage-therapy)
+
+- Omics and systems data  
+  - Transcriptomics, proteomics and metabolomics time courses across infection cycles; sometimes combined with bacterial pan-genome and defense systems. [research.kuleuven](https://research.kuleuven.be/portal/en/project/3E210935)
+
+- Experimental phenotype data  
+  - High‑throughput phage × host infectivity matrices, digital phagograms, and time‑kill curves for different MOIs and conditions. [biblio.ugent](https://biblio.ugent.be/publication/8733425)
+
+\subsection{Target resolution}
+
+- Host range and host species/strain from phage genome or specific genes. [pmc.ncbi.nlm.nih](https://pmc.ncbi.nlm.nih.gov/articles/PMC12579225/)
+- Lifestyle (lytic vs temperate), virulence factors, and presence of AMR or lysogeny‑related genes. [theseus](https://www.theseus.fi/bitstream/10024/889389/2/Uddin_MdKarim.pdf)
+- Multi‑stage infection outcome: adsorption probability, infection success, replication yield, and lysis timing (“layered” or multi‑task targets). [research.kuleuven](https://research.kuleuven.be/portal/en/project/3E210935)
+- Phage cocktail performance: predicted success of combinations against a bacterial community, including synergy/antagonism. [youtube](https://www.youtube.com/watch?v=1ORg_lzV61I)
+
+\subsection{Methodology and model types}
+
+- Classical ML  
+  - Random forests, gradient boosting, SVMs on k‑mer features, gene presence/absence matrices, or CRISPR/receptor feature sets. [pmc.ncbi.nlm.nih](https://pmc.ncbi.nlm.nih.gov/articles/PMC12579225/)
+
+- Deep learning  
+  - CNNs and transformers on raw nucleotide or amino‑acid sequences for classification and host prediction. [pubmed.ncbi.nlm.nih](https://pubmed.ncbi.nlm.nih.gov/40359589/)
+  - Protein language models (e.g. BERT‑like) trained on millions of phage proteins, used for downstream tasks such as host prediction, lifestyle, or functional annotation. [institut-vision](https://www.institut-vision.org/en/news/machine-learning-meets-microbiology-advance-personalized-phage-therapy)
+  - Graph‑based models using bipartite host–phage networks or gene co‑occurrence networks to infer missing edges (new interactions). [research.kuleuven](https://research.kuleuven.be/portal/en/project/3E210935)
+
+- Experimental/ML integration  
+  - Active learning for designing new host‑range assays or refining phage cocktails based on model uncertainty. [institut-vision](https://www.institut-vision.org/en/news/machine-learning-meets-microbiology-advance-personalized-phage-therapy)
+  - Interpretable multilayer models aligned with biological steps (receptors, defense systems, metabolic hijacking), making phage systems a test bed for mechanistic ML. [biblio.ugent](https://biblio.ugent.be/publication/8733425)
+
+\subsection{Strengths and limitations specific to phages}
+
+- Strengths: dense infectivity matrices, well‑defined targets (binary/graded infection), short genomes, and ease of experimental validation. [biblio.ugent](https://biblio.ugent.be/publication/8733425)
+- Limitations: ecological complexity in vivo, bias toward culturable hosts, and difficulty transferring models built on a few species to diverse microbiomes. [pubmed.ncbi.nlm.nih](https://pubmed.ncbi.nlm.nih.gov/40359589/)
