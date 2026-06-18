@@ -363,11 +363,23 @@ button.primary:hover { background: var(--accent); border-color: var(--accent); }
   grid-template-columns: 1fr;
 }
 .row-main {
-  display: grid;
-  grid-template-columns: 1fr auto;
+  display: flex;
   gap: 8px;
   align-items: center;
 }
+
+.del-result {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1;
+  padding: 0 2px;
+  cursor: pointer;
+  border-radius: 3px;
+  flex: 0 0 auto;
+}
+.del-result:hover { color: var(--fail); }
 .try-urls {
   margin-top: 4px;
   font-size: 10.5px;

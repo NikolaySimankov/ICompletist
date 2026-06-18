@@ -3,7 +3,7 @@ import { parseIdentifiers } from "./lib/identifiers.js";
 import { buildRis } from "./lib/risexport.js";
 import { buildSpec, QueryParseError } from "./lib/search/spec.js";
 import { isPdfBlob } from "./lib/pdfcheck.js";
-import { updateRunResult } from "./lib/history.js";
+import { updateRunResult, removeRunResult, removeUnavailableResults } from "./lib/history.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -38,6 +38,7 @@ const ui = {
   resumeBtn: $("resume-btn"),
   recoverQueryBtn: $("recover-query-btn"),
   deleteRunBtn: $("delete-run-btn"),
+  removeUnavailableBtn: $("remove-unavailable-btn"),
   // Search-mode bindings:
   modeIdBtn: $("mode-id-btn"),
   modeSearchBtn: $("mode-search-btn"),
@@ -471,11 +472,15 @@ function renderRunResults() {
             <div class="attach-status" data-idx="${idx}"></div>
           </div>
         </div>` : "";
+      const delBtn = e.source === "unavailable"
+        ? `<button class="del-result" data-idx="${idx}" title="Remove this item from the run">✕</button>`
+        : "";
       return `
         <li data-doi="${e.doi}" title="${(e.filename || e.error || "Click to copy DOI to textarea").replace(/"/g, "&quot;")}">
           <div class="row-main">
             <span class="doi">${e.doi}</span>
             <span class="source ${sourceClassFor(e.source)}">${e.source}</span>
+            ${delBtn}
           </div>
           ${tryUrlsHtml}
           ${attachHtml}
@@ -503,6 +508,10 @@ function setRunActionVisibility(run) {
   // Refill / export only make sense once there are results.
   if (ui.refillBtn) ui.refillBtn.hidden = !hasResults;
   if (ui.exportRunBtn) ui.exportRunBtn.hidden = !hasResults;
+  // "Remove all unavailable" only when the run actually has failed items.
+  if (ui.removeUnavailableBtn) {
+    ui.removeUnavailableBtn.hidden = !run.results.some((r) => r.source === "unavailable");
+  }
   // Delete is always available (default-visible).
 }
 
@@ -513,8 +522,9 @@ ui.runSelect.addEventListener("change", (e) => {
 
 // Click an individual result to add its DOI to the textarea.
 ui.runResults.addEventListener("click", (e) => {
-  // Clicks inside the manual-attach panel are handled separately.
-  if (e.target.closest(".attach-area")) return;
+  // Clicks inside the manual-attach panel / on the delete button are handled
+  // by their own listeners.
+  if (e.target.closest(".attach-area") || e.target.closest(".del-result")) return;
   const li = e.target.closest("li[data-doi]");
   if (!li) return;
   const doi = li.dataset.doi;
@@ -602,7 +612,24 @@ function attachUrl(idx) {
 
 ui.runResults.addEventListener("click", (e) => {
   const go = e.target.closest(".attach-url-go");
-  if (go) attachUrl(parseInt(go.dataset.idx, 10));
+  if (go) { attachUrl(parseInt(go.dataset.idx, 10)); return; }
+  // Remove a single unavailable item from the run (updates RIS).
+  const del = e.target.closest(".del-result");
+  if (del) {
+    const run = runsCache.find((r) => r.id === selectedRunId);
+    const res = run?.results?.[parseInt(del.dataset.idx, 10)];
+    if (run && res) removeRunResult(run.id, res.doi); // storage.onChanged re-renders
+  }
+});
+
+// "Remove all unavailable" — drop every failed item from the selected run.
+ui.removeUnavailableBtn?.addEventListener("click", async () => {
+  const run = runsCache.find((r) => r.id === selectedRunId);
+  if (!run) return;
+  const n = run.results.filter((r) => r.source === "unavailable").length;
+  if (!n) return;
+  if (!confirm(`Remove all ${n} unavailable item${n === 1 ? "" : "s"} from this run? This updates the RIS export.`)) return;
+  await removeUnavailableResults(run.id); // storage.onChanged re-renders
 });
 
 ui.runResults.addEventListener("change", (e) => {
