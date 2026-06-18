@@ -536,6 +536,13 @@ async function runPool(items, settings, subfolder, s2Cache, onResult, isCancelle
   await Promise.all(workers);
 }
 
+// Keepalive: the popup/tab sends a no-op ping every 25 s while a job is
+// running. Receiving any message resets Chrome's 5-minute service-worker
+// idle timer, preventing the worker from being killed mid-batch.
+chrome.runtime.onMessage.addListener((msg) => {
+  if (msg.type === "keepalive") return; // receipt alone resets the timer
+});
+
 // Long-lived connection from popup → process job.
 chrome.runtime.onConnect.addListener((port) => {
   if (port.name !== "fetch-job") return;

@@ -53,6 +53,23 @@ chrome.storage.local.get({ subfolder: "icompletist" }, ({ subfolder }) => {
   ui.subfolderField.value = subfolder;
 });
 
+// ---- Service-worker keepalive ----
+// Chrome MV3 service workers are killed after 5 minutes of no browser
+// events. A 2500-DOI batch takes far longer than that. We ping the service
+// worker every 25 seconds while a job is running so Chrome keeps resetting
+// the idle timer and never terminates the worker mid-batch.
+let _keepaliveTimer = null;
+function startKeepalive() {
+  if (_keepaliveTimer) return; // already running
+  _keepaliveTimer = setInterval(() => {
+    chrome.runtime.sendMessage({ type: "keepalive" }).catch(() => {});
+  }, 25_000);
+}
+function stopKeepalive() {
+  clearInterval(_keepaliveTimer);
+  _keepaliveTimer = null;
+}
+
 function show(section) {
   ui.input.hidden = section !== "input";
   ui.progress.hidden = section !== "progress";
@@ -240,6 +257,7 @@ ui.fetchBtn.addEventListener("click", async () => {
   chrome.storage.local.set({ subfolder });
 
   const port = chrome.runtime.connect({ name: "fetch-job" });
+  startKeepalive();
   port.postMessage({ type: "start", items, subfolder });
 
   port.onMessage.addListener((msg) => {
@@ -263,14 +281,16 @@ ui.fetchBtn.addEventListener("click", async () => {
       li.innerHTML = `<div class="row-main"><span class="doi">${r.doi}</span><span class="source ${sourceClass}">${r.source}</span></div>${tryUrlsHtml}`;
       ui.resultsList.appendChild(li);
     } else if (msg.type === "done") {
+      stopKeepalive();
       show("results");
       ui.progressText.textContent = `Finished: ${msg.summary.pmc || 0} PMC, ${msg.summary.oa || 0} OA, ${msg.summary.institutional || 0} institutional, ${msg.summary.tdm || 0} TDM, ${msg.summary.cached || 0} cached, ${msg.summary.unavailable || 0} unavailable.`;
     } else if (msg.type === "error") {
+      stopKeepalive();
       ui.progressText.textContent = `Error: ${msg.error}`;
     }
   });
 
-  ui.cancelBtn.onclick = () => { port.postMessage({ type: "cancel" }); show("input"); };
+  ui.cancelBtn.onclick = () => { stopKeepalive(); port.postMessage({ type: "cancel" }); show("input"); };
 });
 
 ui.clearBtn.addEventListener("click", () => { ui.doisField.value = ""; });
@@ -493,6 +513,7 @@ ui.downloadPdfsBtn?.addEventListener("click", () => {
   chrome.storage.local.set({ subfolder });
 
   const port = chrome.runtime.connect({ name: "fetch-job" });
+  startKeepalive();
   port.postMessage({ type: "start", items, subfolder });
 
   port.onMessage.addListener((msg) => {
@@ -515,6 +536,7 @@ ui.downloadPdfsBtn?.addEventListener("click", () => {
       li.innerHTML = `<div class="row-main"><span class="doi">${r.doi}</span><span class="source ${sourceClass}">${r.source}</span></div>${tryUrlsHtml}`;
       ui.resultsList.appendChild(li);
     } else if (msg.type === "done") {
+      stopKeepalive();
       show("results");
       ui.progressText.textContent = `Finished: ${msg.summary.pmc || 0} PMC, ${msg.summary.oa || 0} OA, ${msg.summary.institutional || 0} institutional, ${msg.summary.tdm || 0} TDM, ${msg.summary.cached || 0} cached, ${msg.summary.unavailable || 0} unavailable.`;
     }

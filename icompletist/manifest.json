@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "ICompletist",
-  "version": "1.7.0",
-  "description": "Search and bulk-fetch scientific articles legally. v2 adds multi-database search, ENSURE precision filter, full RIS metadata, per-source throttling, publisher-native APIs first, and skip-if-already-downloaded.",
+  "version": "1.8.0",
+  "description": "Search and bulk-fetch scientific articles legally. v2 adds multi-database search, ENSURE precision filter, full RIS metadata, per-source throttling, publisher-native APIs first, skip-if-already-downloaded, and service-worker keepalive for batches of any size.",
   "permissions": [
     "storage",
     "downloads",
