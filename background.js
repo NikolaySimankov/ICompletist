@@ -322,6 +322,11 @@ async function handleDoi(item, settings, subfolder, s2Cache) {
 
   // ----- Generic pipeline -----
 
+  // Always offer the DOI landing page as a manual fallback. Recorded up front
+  // so it appears first in the "Try manually" list (ahead of source-specific
+  // links discovered below).
+  recordUrl(`https://doi.org/${doi}`, "DOI landing page");
+
   // Step 1: Publisher-native authoritative APIs.
   //
   // For DOIs whose publisher we recognize AND whose key/token the user has
@@ -444,8 +449,9 @@ async function handleDoi(item, settings, subfolder, s2Cache) {
       } else {
         console.info(`[${doi}] Unpaywall: no OA copy`);
       }
+      // Surface Unpaywall's best couple of OA locations (not the full list).
       if (Array.isArray(up.candidateUrls)) {
-        for (const u of up.candidateUrls) recordUrl(u, "Unpaywall OA location");
+        for (const u of up.candidateUrls.slice(0, 2)) recordUrl(u, "Unpaywall OA location");
       }
     } catch (e) {
       console.warn(`[${doi}] Unpaywall error:`, e);
@@ -462,14 +468,18 @@ async function handleDoi(item, settings, subfolder, s2Cache) {
   try {
     await throttle("openalex");
     const oa = await openalexLookup(doi, settings.email);
+    // Try every reported PDF URL for the download…
     for (const u of oa.candidateUrls || []) {
       const filename = await tryDirectPdf(u, doi, subfolder);
       if (filename) {
         return { doi, source: "oa", via: "openalex", title: oa.title, license: oa.license, filename };
       }
-      recordUrl(u, "OpenAlex OA PDF");
     }
-    for (const u of oa.landingUrls || []) recordUrl(u, "OpenAlex landing page");
+    // …but only surface the single best OA PDF + best landing page as manual
+    // links. OpenAlex lists many locations per work; recording them all floods
+    // the "Try manually" list and buries the DOI/Unpaywall links.
+    if (oa.candidateUrls?.[0]) recordUrl(oa.candidateUrls[0], "OpenAlex OA PDF");
+    if (oa.landingUrls?.[0]) recordUrl(oa.landingUrls[0], "OpenAlex landing page");
     if (!oa.found) console.info(`[${doi}] OpenAlex: no OA PDF`);
   } catch (e) {
     console.warn(`[${doi}] OpenAlex error:`, e);
@@ -542,9 +552,6 @@ async function handleDoi(item, settings, subfolder, s2Cache) {
       recordUrl(r.url, "Institutional resolver link");
     }
   }
-
-  // Always include the DOI resolver itself as a last-resort link.
-  recordUrl(`https://doi.org/${doi}`, "DOI landing page");
 
   console.info(`[${doi}] all sources exhausted → unavailable (${tryUrls.length} URLs to try manually)`);
   return { doi, source: "unavailable", publisher, tryUrls };
