@@ -31,26 +31,41 @@ export async function s2BatchLookup(dois, { apiKey } = {}) {
     if (apiKey) headers["X-API-KEY"] = apiKey;
 
     const body = JSON.stringify({ ids: batch.map((d) => `DOI:${d}`) });
+
+    // Try up to 3 times with exponential backoff on 429.
     let res;
-    try {
-      res = await fetch(url, { method: "POST", headers, body });
-    } catch (e) {
-      console.warn("S2 batch network error:", e);
-      continue;
+    let attempt = 0;
+    while (attempt < 3) {
+      try {
+        res = await fetch(url, { method: "POST", headers, body });
+      } catch (e) {
+        console.warn("S2 batch network error:", e);
+        res = null;
+        break;
+      }
+      if (res.status !== 429) break;
+
+      // Respect Retry-After if present, else exponential backoff.
+      const retryAfter = parseInt(res.headers.get("Retry-After") || "", 10);
+      const waitMs = !isNaN(retryAfter) ? retryAfter * 1000 : Math.min(2000 * Math.pow(2, attempt), 15000);
+      console.info(`S2 returned 429, waiting ${waitMs}ms before retry ${attempt + 1}/3${apiKey ? "" : " (set an S2 API key in Settings to avoid this)"}`);
+      await new Promise((r) => setTimeout(r, waitMs));
+      attempt++;
     }
-    if (!res.ok) {
-      console.warn("S2 batch returned", res.status);
-      continue;
+
+    if (!res || !res.ok) {
+      console.warn("S2 batch giving up after status", res?.status);
+      continue; // Skip this batch; rest of pipeline will handle these DOIs normally.
     }
+
     let papers;
     try { papers = await res.json(); } catch { continue; }
 
-    // S2 returns nulls for IDs it couldn't resolve, in the same order as input.
     batch.forEach((doi, i) => {
       const p = papers[i];
-      if (!p) return; // Not found in S2 — leave map entry absent.
+      if (!p) return;
       if (!p.isOpenAccess || !p.openAccessPdf?.url) {
-        result.set(doi, null); // Known to S2 but no OA copy.
+        result.set(doi, null);
         return;
       }
       result.set(doi, {

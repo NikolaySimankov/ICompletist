@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ICompletist",
-  "version": "0.10.0",
+  "version": "0.10.1",
   "description": "Bulk-fetch scientific articles legally: PMC, bioRxiv, arXiv, OpenReview, IEEE OA, Unpaywall, Semantic Scholar, CORE, publisher TDM APIs, institutional resolver.",
   "permissions": [
     "storage",

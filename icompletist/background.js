@@ -323,6 +323,18 @@ async function runPool(items, settings, subfolder, s2Cache, onResult, isCancelle
 chrome.runtime.onConnect.addListener((port) => {
   if (port.name !== "fetch-job") return;
   let cancelled = false;
+  let portAlive = true;
+
+  // The popup can close at any time; in that case the port disconnects and
+  // any further postMessage() would throw. We keep the pool running (so
+  // history still records results) but silently drop messages.
+  port.onDisconnect.addListener(() => { portAlive = false; });
+
+  const safePost = (msg) => {
+    if (!portAlive) return;
+    try { port.postMessage(msg); }
+    catch { portAlive = false; }
+  };
 
   port.onMessage.addListener(async (msg) => {
     if (msg.type === "cancel") { cancelled = true; return; }
@@ -341,7 +353,7 @@ chrome.runtime.onConnect.addListener((port) => {
     let s2Cache = new Map();
     const doiValues = items.filter((it) => it.type === "doi").map((it) => it.value);
     if (doiValues.length) {
-      port.postMessage({ type: "progress", done: 0, total: items.length, currentDoi: `Pre-fetching OA URLs from Semantic Scholar (${doiValues.length} DOIs)…` });
+      safePost({ type: "progress", done: 0, total: items.length, currentDoi: `Pre-fetching OA URLs from Semantic Scholar (${doiValues.length} DOIs)…` });
       try {
         s2Cache = await s2BatchLookup(doiValues, { apiKey: settings.s2ApiKey });
         console.info(`S2 pre-pass: resolved ${s2Cache.size}/${doiValues.length} DOIs`);
@@ -360,13 +372,13 @@ chrome.runtime.onConnect.addListener((port) => {
           summary[msg.result.source] = (summary[msg.result.source] || 0) + 1;
           await appendToRun(runId, msg.result);
         }
-        port.postMessage(msg);
+        safePost(msg);
       },
       () => cancelled
     );
 
     await finishRun(runId, summary);
-    port.postMessage({ type: "progress", done: items.length, total: items.length });
-    port.postMessage({ type: "done", summary });
+    safePost({ type: "progress", done: items.length, total: items.length });
+    safePost({ type: "done", summary });
   });
 });
