@@ -23,6 +23,7 @@ const ui = {
   statOa: $("stat-oa"),
   statInst: $("stat-inst"),
   statTdm: $("stat-tdm"),
+  statCached: $("stat-cached"),
   statFail: $("stat-fail"),
   historyCount: $("history-count"),
   historyClear: $("history-clear"),
@@ -133,7 +134,7 @@ ui.searchBtn?.addEventListener("click", async () => {
 
   show("progress");
   ui.resultsList.innerHTML = "";
-  for (const k of ["statPmc", "statOa", "statInst", "statTdm", "statFail"]) ui[k].textContent = "0";
+  for (const k of ["statPmc", "statOa", "statInst", "statTdm", "statCached", "statFail"]) ui[k].textContent = "0";
   ui.progressFill.style.width = "0%";
   ui.progressText.textContent = `Searching ${inputs.sources.length} database${inputs.sources.length === 1 ? "" : "s"}…`;
 
@@ -230,7 +231,7 @@ ui.fetchBtn.addEventListener("click", async () => {
   }
   show("progress");
   ui.resultsList.innerHTML = "";
-  for (const k of ["statPmc", "statOa", "statInst", "statTdm", "statFail"]) ui[k].textContent = "0";
+  for (const k of ["statPmc", "statOa", "statInst", "statTdm", "statCached", "statFail"]) ui[k].textContent = "0";
 
   // Sanitize and persist subfolder.
   const subfolder = (ui.subfolderField.value || "icompletist")
@@ -247,7 +248,7 @@ ui.fetchBtn.addEventListener("click", async () => {
       ui.progressText.textContent = `${msg.done} / ${msg.total} — ${msg.currentDoi || ""}`;
     } else if (msg.type === "result") {
       const r = msg.result;
-      const counter = { pmc: "statPmc", oa: "statOa", institutional: "statInst", tdm: "statTdm", unavailable: "statFail" }[r.source];
+      const counter = { pmc: "statPmc", oa: "statOa", institutional: "statInst", tdm: "statTdm", cached: "statCached", unavailable: "statFail" }[r.source];
       if (counter) ui[counter].textContent = String(parseInt(ui[counter].textContent, 10) + 1);
 
       const li = document.createElement("li");
@@ -263,7 +264,7 @@ ui.fetchBtn.addEventListener("click", async () => {
       ui.resultsList.appendChild(li);
     } else if (msg.type === "done") {
       show("results");
-      ui.progressText.textContent = `Finished: ${msg.summary.pmc || 0} PMC, ${msg.summary.oa || 0} OA, ${msg.summary.institutional || 0} institutional, ${msg.summary.tdm || 0} TDM, ${msg.summary.unavailable || 0} unavailable.`;
+      ui.progressText.textContent = `Finished: ${msg.summary.pmc || 0} PMC, ${msg.summary.oa || 0} OA, ${msg.summary.institutional || 0} institutional, ${msg.summary.tdm || 0} TDM, ${msg.summary.cached || 0} cached, ${msg.summary.unavailable || 0} unavailable.`;
     } else if (msg.type === "error") {
       ui.progressText.textContent = `Error: ${msg.error}`;
     }
@@ -328,7 +329,7 @@ function runLabel(run) {
     return `[SEARCH] ${ts} · ${total} unique result${total === 1 ? "" : "s"}${status}`;
   }
   const summary = run.summary
-    ? ` · ${run.summary.pmc || 0}+${run.summary.oa || 0}+${run.summary.tdm || 0}+${run.summary.institutional || 0} ok, ${run.summary.unavailable || 0} fail`
+    ? ` · ${run.summary.pmc || 0}+${run.summary.oa || 0}+${run.summary.tdm || 0}+${run.summary.institutional || 0}+${run.summary.cached || 0} ok, ${run.summary.unavailable || 0} fail`
     : ` · ${run.results.length}/${run.total}`;
   return `${ts} · ${run.total} DOIs${summary}${status}`;
 }
@@ -466,7 +467,7 @@ ui.downloadPdfsBtn?.addEventListener("click", () => {
   // Same flow as fetchBtn — show progress section, restore standard stats panel.
   show("progress");
   ui.resultsList.innerHTML = "";
-  for (const k of ["statPmc", "statOa", "statInst", "statTdm", "statFail"]) ui[k].textContent = "0";
+  for (const k of ["statPmc", "statOa", "statInst", "statTdm", "statCached", "statFail"]) ui[k].textContent = "0";
   // Restore the standard stats panel (the search panel may have replaced it).
   const statsEl = document.querySelector("#progress-section .stats");
   if (statsEl) {
@@ -500,7 +501,7 @@ ui.downloadPdfsBtn?.addEventListener("click", () => {
       ui.progressText.textContent = `${msg.done} / ${msg.total} — ${msg.currentDoi || ""}`;
     } else if (msg.type === "result") {
       const r = msg.result;
-      const counter = { pmc: "statPmc", oa: "statOa", institutional: "statInst", tdm: "statTdm", unavailable: "statFail" }[r.source];
+      const counter = { pmc: "statPmc", oa: "statOa", institutional: "statInst", tdm: "statTdm", cached: "statCached", unavailable: "statFail" }[r.source];
       if (counter) ui[counter].textContent = String(parseInt(ui[counter].textContent, 10) + 1);
       const li = document.createElement("li");
       const sourceClass = r.source === "unavailable" ? "fail"
@@ -515,7 +516,7 @@ ui.downloadPdfsBtn?.addEventListener("click", () => {
       ui.resultsList.appendChild(li);
     } else if (msg.type === "done") {
       show("results");
-      ui.progressText.textContent = `Finished: ${msg.summary.pmc || 0} PMC, ${msg.summary.oa || 0} OA, ${msg.summary.institutional || 0} institutional, ${msg.summary.tdm || 0} TDM, ${msg.summary.unavailable || 0} unavailable.`;
+      ui.progressText.textContent = `Finished: ${msg.summary.pmc || 0} PMC, ${msg.summary.oa || 0} OA, ${msg.summary.institutional || 0} institutional, ${msg.summary.tdm || 0} TDM, ${msg.summary.cached || 0} cached, ${msg.summary.unavailable || 0} unavailable.`;
     }
   });
 });

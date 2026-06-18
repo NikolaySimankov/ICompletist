@@ -149,6 +149,55 @@ async function downloadBlob(blob, identifier, subfolder) {
   return filename;
 }
 
+// Reproduce the filename normalization downloadBlob uses, without performing
+// the download. Used by the "already on disk?" pre-check.
+function expectedFilename(identifier, subfolder) {
+  const safe = identifier.replace(/[^a-z0-9]+/gi, "_");
+  const folder = (subfolder || "icompletist").replace(/[<>:"|?*\x00-\x1f]/g, "_");
+  return { folder, safe, relative: `${folder}/${safe}.pdf` };
+}
+
+const REGEX_ESCAPE_RE = /[.*+?^${}()|[\]\\]/g;
+const escRe = (s) => s.replace(REGEX_ESCAPE_RE, "\\$&");
+
+// Check Chrome's download history for a previously-saved PDF matching this
+// identifier in the target subfolder. Returns the relative filename if a
+// matching file is still on disk (per Chrome's `exists` flag), else null.
+//
+// Why this works: chrome.downloads.search queries Chrome's own download
+// database (not the filesystem directly), but its `exists` field is updated
+// when Chrome notices the file is gone, so it's a decent proxy. Matching is
+// done by regex against the absolute path because we don't know the user's
+// Downloads directory location. The optional " (N)" group accommodates
+// Chrome's uniquify behavior — earlier runs may have saved foo.pdf, foo (1).pdf
+// and we treat any of them as "already downloaded".
+async function checkAlreadyDownloaded(identifier, subfolder) {
+  const { folder, safe } = expectedFilename(identifier, subfolder);
+  // Match {folder}{sep}{safe}(?: (N))?.pdf at end of absolute path, on both
+  // POSIX and Windows. In the regex source: [/\\\\] → [/\\] in the string →
+  // matches either separator literally.
+  const pattern = `${escRe(folder)}[/\\\\]${escRe(safe)}(?:\\s\\(\\d+\\))?\\.pdf$`;
+  try {
+    const results = await chrome.downloads.search({
+      filenameRegex: pattern,
+      state: "complete",
+      limit: 5,
+    });
+    const hit = results.find((r) => r.exists);
+    if (!hit) return null;
+    // Normalize the absolute path Chrome returned into a relative tail that
+    // matches what downloadBlob would have returned, so downstream code
+    // (history, RIS export's L1 file:// builder) keeps working unchanged.
+    const normalized = hit.filename.replace(/\\/g, "/");
+    const marker = `/${folder.toLowerCase()}/`;
+    const idx = normalized.toLowerCase().lastIndexOf(marker);
+    return idx >= 0 ? normalized.slice(idx + 1) : normalized;
+  } catch (e) {
+    console.warn(`checkAlreadyDownloaded(${identifier}) error:`, e);
+    return null;
+  }
+}
+
 // Try fetching a known PDF URL and downloading it. Returns filename or null.
 async function tryDirectPdf(pdfUrl, identifier, subfolder) {
   try {
@@ -441,6 +490,19 @@ async function handleDoi(item, settings, subfolder, s2Cache) {
 }
 
 async function processItem(item, settings, subfolder, s2Cache) {
+  // Pre-check: if a PDF for this identifier already exists in the target
+  // subfolder from an earlier run, skip the entire fetch cascade. We use
+  // the same display ID that downloadBlob would have used so the regex
+  // matches exactly.
+  const displayId = item.type === "arxiv" ? `arxiv:${item.value}`
+    : item.type === "openreview" ? `openreview:${item.value}`
+    : item.value;
+  const existing = await checkAlreadyDownloaded(displayId, subfolder);
+  if (existing) {
+    console.info(`[${displayId}] already on disk, skipping (${existing})`);
+    return { doi: displayId, source: "cached", filename: existing };
+  }
+
   if (item.type === "arxiv") return handleArxiv(item, settings, subfolder);
   if (item.type === "openreview") return handleOpenReview(item, settings, subfolder);
   return handleDoi(item, settings, subfolder, s2Cache);

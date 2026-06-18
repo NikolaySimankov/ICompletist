@@ -151,6 +151,7 @@ button.primary:hover { background: var(--accent); border-color: var(--accent); }
 .stat.oa { background: rgba(45, 106, 79, 0.1); color: var(--oa); }
 .stat.inst { background: rgba(29, 78, 137, 0.1); color: var(--inst); }
 .stat.tdm { background: rgba(106, 76, 147, 0.1); color: var(--tdm); }
+.stat.cached { background: rgba(100, 116, 139, 0.12); color: #475569; }
 .stat.fail { background: rgba(155, 34, 38, 0.1); color: var(--fail); }
 
 #results-list {
@@ -179,6 +180,7 @@ button.primary:hover { background: var(--accent); border-color: var(--accent); }
 .source.oa { color: var(--oa); }
 .source.inst { color: var(--inst); }
 .source.tdm { color: var(--tdm); }
+.source.cached { color: #475569; }
 .source.fail { color: var(--fail); }
 
 #history-section {
