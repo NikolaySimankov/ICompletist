@@ -165,52 +165,7 @@ async function handleDoi(item, settings, subfolder, s2Cache) {
     }
   }
 
-  // Step 1: bioRxiv / medRxiv — fully OA, no key needed.
-  if (isBiorxivDoi(doi)) {
-    try {
-      const r = await biorxivFetch(doi);
-      if (r.found) {
-        const filename = await downloadBlob(r.blob, doi, subfolder);
-        return { doi, source: "oa", publisher: r.server, filename };
-      }
-    } catch (e) {
-      console.warn("bioRxiv error for", doi, e);
-    }
-  }
-
-  // Step 2: PMC.
-  try {
-    await throttle("ncbi");
-    const pmc = await pmcLookup(doi, { email: settings.email, apiKey: settings.ncbiApiKey });
-    if (pmc.found) {
-      const filename = await downloadBlob(pmc.blob, doi, subfolder);
-      return { doi, source: "pmc", pmcid: pmc.pmcid, filename };
-    }
-  } catch (e) {
-    console.warn("PMC error for", doi, e);
-  }
-
-  // Step 3: Unpaywall. Skip if S2 already told us this is closed-access.
-  if (settings.email && !(s2Cache?.get(doi) === null)) {
-    try {
-      const up = await unpaywallLookup(doi, settings.email);
-      if (up.found) {
-        const pdfRes = await fetch(up.pdfUrl);
-        if (pdfRes.ok) {
-          const blob = await pdfRes.blob();
-          if (blob.type.includes("pdf") || blob.size > 10000) {
-            const filename = await downloadBlob(blob, doi, subfolder);
-            return { doi, source: "oa", title: up.title, license: up.license, filename };
-          }
-          console.warn("Unpaywall returned non-PDF for", doi, "type:", blob.type, "size:", blob.size);
-        }
-      }
-    } catch (e) {
-      console.warn("Unpaywall error for", doi, e);
-    }
-  }
-
-  // Step 4: CORE — covers many repository OA copies Unpaywall misses.
+  // Step 1: CORE — aggregator of ~200M+ OA papers from repositories worldwide.
   if (settings.coreApiKey) {
     try {
       await throttle("core");
@@ -224,21 +179,8 @@ async function handleDoi(item, settings, subfolder, s2Cache) {
     }
   }
 
-  // Step 5: IEEE OA.
-  if (isIeeeDoi(doi) && settings.ieeeKey) {
-    try {
-      await throttle("ieee");
-      const r = await ieeeOaFetch(doi, { apiKey: settings.ieeeKey });
-      if (r.found) {
-        const filename = await downloadBlob(r.blob, doi, subfolder);
-        return { doi, source: "oa", publisher: "ieee", filename };
-      }
-    } catch (e) {
-      console.warn("IEEE error for", doi, e);
-    }
-  }
-
-  // Step 6: Publisher TDM APIs.
+  // Step 2: Publisher TDM APIs — clean publisher PDFs when your institution
+  // has a TDM agreement. Only fires for matching publisher prefixes.
   if (publisher === "elsevier" && settings.elsevierKey) {
     await throttle("elsevier-tdm");
     const r = await elsevierTdmFetch(doi, {
@@ -266,6 +208,65 @@ async function handleDoi(item, settings, subfolder, s2Cache) {
       return { doi, source: "tdm", publisher, filename };
     } else {
       console.warn("Wiley TDM failed for", doi, "status:", r.status, r.reason);
+    }
+  }
+
+  // Step 3: bioRxiv / medRxiv — fully OA, no key needed.
+  if (isBiorxivDoi(doi)) {
+    try {
+      const r = await biorxivFetch(doi);
+      if (r.found) {
+        const filename = await downloadBlob(r.blob, doi, subfolder);
+        return { doi, source: "oa", publisher: r.server, filename };
+      }
+    } catch (e) {
+      console.warn("bioRxiv error for", doi, e);
+    }
+  }
+
+  // Step 4: PMC.
+  try {
+    await throttle("ncbi");
+    const pmc = await pmcLookup(doi, { email: settings.email, apiKey: settings.ncbiApiKey });
+    if (pmc.found) {
+      const filename = await downloadBlob(pmc.blob, doi, subfolder);
+      return { doi, source: "pmc", pmcid: pmc.pmcid, filename };
+    }
+  } catch (e) {
+    console.warn("PMC error for", doi, e);
+  }
+
+  // Step 5: Unpaywall. Skip if S2 already told us this is closed-access.
+  if (settings.email && !(s2Cache?.get(doi) === null)) {
+    try {
+      const up = await unpaywallLookup(doi, settings.email);
+      if (up.found) {
+        const pdfRes = await fetch(up.pdfUrl);
+        if (pdfRes.ok) {
+          const blob = await pdfRes.blob();
+          if (blob.type.includes("pdf") || blob.size > 10000) {
+            const filename = await downloadBlob(blob, doi, subfolder);
+            return { doi, source: "oa", title: up.title, license: up.license, filename };
+          }
+          console.warn("Unpaywall returned non-PDF for", doi, "type:", blob.type, "size:", blob.size);
+        }
+      }
+    } catch (e) {
+      console.warn("Unpaywall error for", doi, e);
+    }
+  }
+
+  // Step 6: IEEE OA.
+  if (isIeeeDoi(doi) && settings.ieeeKey) {
+    try {
+      await throttle("ieee");
+      const r = await ieeeOaFetch(doi, { apiKey: settings.ieeeKey });
+      if (r.found) {
+        const filename = await downloadBlob(r.blob, doi, subfolder);
+        return { doi, source: "oa", publisher: "ieee", filename };
+      }
+    } catch (e) {
+      console.warn("IEEE error for", doi, e);
     }
   }
 
