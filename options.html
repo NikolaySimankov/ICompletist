@@ -84,6 +84,17 @@
   <button id="save-btn" class="primary">Save</button>
   <span id="saved-indicator" class="saved" hidden>Saved ✓</span>
 
+  <h3>Backup</h3>
+  <div class="field">
+    <div class="row" style="margin-top:0;">
+      <button id="export-settings-btn">Export settings…</button>
+      <button id="import-settings-btn">Import settings…</button>
+      <input type="file" id="import-settings-input" accept="application/json,.json" hidden>
+    </div>
+    <span id="backup-status" class="saved" hidden></span>
+    <div class="hint">Export writes all settings (including API keys) to a JSON file you can back up or move to another machine. Import overwrites the current settings from such a file. Keep the file private — it contains your keys.</div>
+  </div>
+
   <script src="options.js"></script>
 </body>
 </html>
