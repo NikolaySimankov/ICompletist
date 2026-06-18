@@ -41,6 +41,12 @@
     <div class="hint">Covers ~200M OA papers from repositories Unpaywall sometimes misses. Free key at <a href="https://core.ac.uk/services/api" target="_blank">core.ac.uk/services/api</a>. Per CORE's terms, the extension only uses PDF URLs returned by their API — never constructs files.core.ac.uk URLs directly.</div>
   </div>
 
+  <div class="field">
+    <label for="downloadsPath">Absolute path to your Downloads folder (optional, for Zotero RIS export)</label>
+    <input type="text" id="downloadsPath" placeholder="e.g. /home/you/Downloads, /Users/you/Downloads, or C:\Users\you\Downloads">
+    <div class="hint">If set, RIS export will use absolute <code>file://</code> URLs for PDF attachments, so Zotero links to your files without needing a Linked Attachment Base Directory. Leave blank to use relative paths (works with Zotero's base directory setting).</div>
+  </div>
+
   <h3>Institutional link resolver</h3>
   <div class="field">
     <label for="resolverBase">OpenURL resolver base URL</label>

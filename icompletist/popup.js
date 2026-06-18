@@ -1,5 +1,6 @@
 // popup.js - UI controller
 import { parseIdentifiers } from "./lib/identifiers.js";
+import { buildRis } from "./lib/risexport.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -226,20 +227,20 @@ ui.refillBtn.addEventListener("click", () => {
   show("input");
 });
 
-ui.exportRunBtn.addEventListener("click", () => {
+ui.exportRunBtn.addEventListener("click", async () => {
   const run = runsCache.find((r) => r.id === selectedRunId);
   if (!run || !run.results.length) return;
-  const rows = [["doi", "source", "filename", "publisher", "error", "try_urls"]];
-  for (const e of run.results) {
-    const urls = Array.isArray(e.tryUrls) ? e.tryUrls.map((u) => u.url).join(" | ") : "";
-    rows.push([e.doi, e.source, e.filename || "", e.publisher || "", e.error || "", urls]);
-  }
-  const csv = rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
-  const dataUrl = `data:text/csv;charset=utf-8,${encodeURIComponent(csv)}`;
+
+  const { downloadsPath = "" } = await new Promise((resolve) =>
+    chrome.storage.sync.get({ downloadsPath: "" }, resolve)
+  );
+
+  const ris = buildRis(run, { downloadsPath });
+  const dataUrl = `data:application/x-research-info-systems;charset=utf-8,${encodeURIComponent(ris)}`;
   const stamp = new Date(run.startedAt).toISOString().replace(/[:.]/g, "-").slice(0, 19);
   chrome.downloads.download({
     url: dataUrl,
-    filename: `icompletist-run-${stamp}.csv`,
+    filename: `icompletist-run-${stamp}.ris`,
     saveAs: false,
   });
 });
