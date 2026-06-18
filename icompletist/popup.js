@@ -458,8 +458,7 @@ function renderRunResults() {
       // Guided manual-attach panel for items with no PDF on disk yet.
       const attachHtml = !e.filename ? `
         <div class="attach-area">
-          <button class="attach-toggle" data-idx="${idx}">＋ Attach PDF manually</button>
-          <div class="attach-panel" data-idx="${idx}" hidden>
+          <div class="attach-panel" data-idx="${idx}">
             <div class="attach-hint">Open a link above to find the PDF, then:</div>
             <label class="attach-file-btn">Choose downloaded PDF…
               <input type="file" accept="application/pdf" class="attach-file-input" data-idx="${idx}" hidden>
@@ -602,12 +601,6 @@ function attachUrl(idx) {
 }
 
 ui.runResults.addEventListener("click", (e) => {
-  const toggle = e.target.closest(".attach-toggle");
-  if (toggle) {
-    const panel = toggle.parentElement.querySelector(".attach-panel");
-    if (panel) panel.hidden = !panel.hidden;
-    return;
-  }
   const go = e.target.closest(".attach-url-go");
   if (go) attachUrl(parseInt(go.dataset.idx, 10));
 });
@@ -826,9 +819,13 @@ ui.exportRunBtn.addEventListener("click", async () => {
   const ris = buildRis(run, { downloadsPath });
   const dataUrl = `data:application/x-research-info-systems;charset=utf-8,${encodeURIComponent(ris)}`;
   const stamp = new Date(run.startedAt).toISOString().replace(/[:.]/g, "-").slice(0, 19);
+  // Save the RIS alongside the PDFs, in the same Downloads subfolder.
+  const subfolder = (run.subfolder || ui.subfolderField.value || "icompletist")
+    .replace(/^[/\\]+|[/\\]+$/g, "")
+    .replace(/[<>:"|?*\x00-\x1f]/g, "_");
   chrome.downloads.download({
     url: dataUrl,
-    filename: `icompletist-run-${stamp}.ris`,
+    filename: `${subfolder}/icompletist-run-${stamp}.ris`,
     saveAs: false,
   });
 });
