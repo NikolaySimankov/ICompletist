@@ -24,6 +24,7 @@ import { resolveOpenUrl, fetchWithSession } from "./lib/resolver.js";
 import { startRun, appendToRun, finishRun, replaceRunResults } from "./lib/history.js";
 import { isPdfBlob, describeBlob } from "./lib/pdfcheck.js";
 import { runSearch, buildQueries } from "./lib/search/orchestrate.js";
+import { selectArticles } from "./lib/search/select.js";
 
 // Throttle: minimum gap between hits to the same publisher domain.
 const PUBLISHER_DELAY_MS = 2000;
@@ -544,11 +545,32 @@ chrome.runtime.onConnect.addListener((port) => {
         return;
       }
 
-      // Persist the deduped items as the run's results. We store the rich
-      // metadata (title, year, journal, abstract if present) so the user can
-      // browse the search results later and optionally hand them off to the
-      // PDF download pipeline.
-      const results = items.map((it) => ({
+      // ----- Post-search pipeline: ENRICH → ENSURE -----
+      //
+      // SEARCH and DEDUPLICATE already happened inside runSearch. The two
+      // stages below run automatically on every search.
+
+      // ENRICH: pass-through slot for v2.1. The cascade
+      //   Crossref → PubMed efetch → S2 single-record → Scopus Abstract API
+      // will fill missing abstracts / years / journals here without any
+      // changes to the orchestration. Items only ever flow null→value so
+      // the stage stays idempotent.
+      safePost({ type: "stage", stage: "enrich", before: items.length, after: items.length });
+      const enriched = items;
+
+      // ENSURE: re-apply the original spec locally against title + abstract
+      // + journal. Drops items the databases ranked in but that don't
+      // actually contain the query terms. Same select_articles() machinery
+      // as the user-driven SELECT stage planned for v2.2 — the only
+      // difference is that ENSURE uses the original spec automatically.
+      const ensured = selectArticles(enriched, spec);
+      safePost({ type: "stage", stage: "ensure", before: enriched.length, after: ensured.length });
+
+      // Persist the post-ENSURE items as the run's results. We store the
+      // rich metadata (title, year, journal, abstract if present) so the
+      // user can browse the search results later and optionally hand them
+      // off to the PDF download pipeline.
+      const results = ensured.map((it) => ({
         doi: it.doi || it.arxivId ? (it.doi || `arxiv:${it.arxivId}`) : (it.title || it.id),
         source: "search",
         // Carry richer fields:
@@ -575,14 +597,25 @@ chrome.runtime.onConnect.addListener((port) => {
       await replaceRunResults(runId, results);
 
       const summary = {
-        total: items.length,
+        total: ensured.length,
+        searchCount: items.length,
+        enrichCount: enriched.length,
+        ensureCount: ensured.length,
         ...Object.fromEntries(
           Object.entries(perSource).map(([k, v]) => [k, v.error ? `error: ${v.error}` : v.items.length])
         ),
       };
       await finishRun(runId, summary);
 
-      safePost({ type: "done", items, perSource, runId });
+      safePost({
+        type: "done",
+        items: ensured,
+        perSource,
+        runId,
+        searchCount: items.length,
+        enrichCount: enriched.length,
+        ensureCount: ensured.length,
+      });
     } catch (e) {
       console.error("Search job failed:", e);
       safePost({ type: "done", items: [], perSource: {}, error: e.message, runId });

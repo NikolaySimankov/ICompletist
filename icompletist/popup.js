@@ -183,11 +183,25 @@ ui.searchBtn?.addEventListener("click", async () => {
           status.classList.add("done");
         }
       }
+    } else if (msg.type === "stage") {
+      if (msg.stage === "enrich") {
+        ui.progressText.textContent = `Enriching ${msg.before} item${msg.before === 1 ? "" : "s"}…`;
+      } else if (msg.stage === "ensure") {
+        const dropped = msg.before - msg.after;
+        ui.progressText.textContent = `ENSURE filter: ${msg.before} → ${msg.after} (dropped ${dropped}).`;
+      }
     } else if (msg.type === "done") {
-      const dedupedCount = msg.items.length;
-      ui.progressText.textContent = msg.cancelled
-        ? "Cancelled."
-        : `Search complete — ${dedupedCount} unique result${dedupedCount === 1 ? "" : "s"} after deduplication.`;
+      let text;
+      if (msg.cancelled) {
+        text = "Cancelled.";
+      } else if (typeof msg.searchCount === "number" && msg.searchCount !== msg.ensureCount) {
+        const dropped = msg.searchCount - msg.ensureCount;
+        text = `Search complete — ${msg.searchCount} unique → ${msg.ensureCount} kept after ENSURE (precision filter dropped ${dropped}).`;
+      } else {
+        const n = msg.items.length;
+        text = `Search complete — ${n} unique result${n === 1 ? "" : "s"}.`;
+      }
+      ui.progressText.textContent = text;
       // Auto-select the new run in the history dropdown so the user lands
       // directly on the results.
       if (msg.runId && !msg.cancelled) {
@@ -306,7 +320,11 @@ function runLabel(run) {
   const ts = fmtTs(run.startedAt);
   const status = run.finishedAt ? "" : " (running…)";
   if (run.kind === "search") {
-    const total = run.summary?.total ?? run.results.length;
+    const s = run.summary || {};
+    if (typeof s.searchCount === "number" && typeof s.ensureCount === "number" && s.searchCount !== s.ensureCount) {
+      return `[SEARCH] ${ts} · ${s.searchCount} found → ${s.ensureCount} ensure-passed${status}`;
+    }
+    const total = s.total ?? run.results.length;
     return `[SEARCH] ${ts} · ${total} unique result${total === 1 ? "" : "s"}${status}`;
   }
   const summary = run.summary

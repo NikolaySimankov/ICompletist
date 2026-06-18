@@ -3,20 +3,28 @@
 // API: https://api.core.ac.uk/v3/search/works
 // Auth: Bearer token in Authorization header.
 //
-// CORE's Lucene-like query language is limited and complaint-prone for
-// large queries. We avoid the cross-product explosion (terms × fields)
-// by relying on the implicit default-field search, which CORE applies to
-// title + abstract + fulltext. The only explicit field we use is
-// `yearPublished` for the date range.
+// CORE's query language requires every keyword to be prefixed with a
+// field name — bare terms return zero hits. We expand each term across
+// title, abstract, and fullText so the search covers the same surface
+// the implicit default-field used to cover. Range queries use
+// comparison operators (>=, <=), not Lucene bracket syntax.
 //
 // CORE has no "keywords" field — it has `subjects`, `topics`, and
 // `documentType`. Trying to tag terms as `keywords:foo` returns zero hits.
 
 const PAGE_SIZE = 100;
+const SEARCH_FIELDS = ["title", "abstract", "fullText"];
 
 // Wrap multi-word terms in quotes; leave single words bare.
-function term(t) {
+function quote(t) {
   return /\s/.test(t) ? `"${t.replace(/"/g, '\\"')}"` : t;
+}
+
+// Each term must carry a field prefix, so expand it across the
+// searchable fields with OR.
+function fieldedTerm(t) {
+  const v = quote(t);
+  return "(" + SEARCH_FIELDS.map((f) => `${f}:${v}`).join(" OR ") + ")";
 }
 
 export function buildQuery(spec) {
@@ -25,7 +33,7 @@ export function buildQuery(spec) {
 
   const renderGroup = (g) => {
     const op = g.internal || "OR";
-    const parts = g.terms.map(term);
+    const parts = g.terms.map(fieldedTerm);
     return "(" + parts.join(` ${op} `) + ")";
   };
 
@@ -36,11 +44,10 @@ export function buildQuery(spec) {
     q = `${q} ${ext} ${renderGroup(g)}`;
   }
 
-  if (spec.yearFrom || spec.yearTo) {
-    const a = spec.yearFrom || "*";
-    const b = spec.yearTo || "*";
-    q += ` AND yearPublished:[${a} TO ${b}]`;
-  }
+  const yearParts = [];
+  if (spec.yearFrom) yearParts.push(`yearPublished>=${spec.yearFrom}`);
+  if (spec.yearTo) yearParts.push(`yearPublished<=${spec.yearTo}`);
+  if (yearParts.length) q += ` AND ${yearParts.join(" AND ")}`;
 
   return q;
 }
