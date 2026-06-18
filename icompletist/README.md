@@ -1,58 +1,81 @@
 # ICompletist
 
-A browser extension that bulk-fetches scientific articles **legally**, by trying these sources in order:
+A browser extension that bulk-fetches scientific articles **legally**. Paste a list of identifiers, click Fetch, get PDFs.
 
-1. **PubMed Central (PMC)** — free full text of millions of biomedical articles via NCBI E-utilities + Europe PMC. No key needed.
-2. **Unpaywall** — free legal OA copies across all fields (preprints, repository deposits, gold OA).
-3. **Publisher TDM APIs** — Elsevier ScienceDirect, Springer Nature. Use your institution's subscription via the official text-and-data-mining endpoints designed for bulk access.
-4. **Institutional link resolver** — OpenURL fallback that uses **your own browser session** (cookies/IP), so the publisher sees normal authenticated traffic.
+Accepts DOIs, arXiv IDs, and OpenReview IDs in any mix. Tries a cascade of legitimate sources, downloads to a folder of your choice, exports the results as a Zotero-importable RIS file.
 
-If none of these succeed for a given DOI, the article is reported as unavailable.
+## What it does
 
-## Why this design is sustainable
+For each identifier, ICompletist tries these sources in order until one succeeds:
 
-- **No credential sharing.** The extension runs in your browser, uses your session. Nothing is sent to a central server.
-- **TDM APIs are designed for this.** They allow bulk programmatic access without triggering abuse systems, as long as you stay within your institution's subscription.
-- **Throttled by default.** 6-second gap between same-publisher requests. Bulk runs are slow on purpose — fast scraping is what gets institutions cut off.
-- **Unpaywall first.** Roughly half of recent paywalled papers have a legal OA copy somewhere; fetching from a repository is faster and doesn't touch publisher quotas.
+1. **arXiv direct** (for arXiv IDs and `10.48550/arXiv.X` DOIs)
+2. **bioRxiv / medRxiv** (for `10.1101/` DOIs) — via the bioRxiv API
+3. **Semantic Scholar** — batch pre-pass for all DOIs at the start of a run (up to 500 per request)
+4. **CORE** — aggregator of ~200M+ OA repository copies
+5. **Publisher TDM APIs** — Elsevier ScienceDirect, Springer Nature, Wiley (when your institution has a TDM agreement)
+6. **Unpaywall** — finds OA copies across publishers and repositories
+7. **PMC** — PubMed Central full text via Europe PMC + NCBI
+8. **IEEE Open Access API** — for `10.1109/` DOIs marked as OA
+9. **Institutional link resolver** — your library's OpenURL endpoint, using your own browser session
 
-## Install (developer mode)
+If nothing succeeds, the result is `unavailable` and includes a list of URLs the user can open manually (Unpaywall's full set of OA locations, PMC article page, bioRxiv landing page, DOI resolver, institutional link, etc.).
 
-1. Open `chrome://extensions` (or `edge://extensions`).
-2. Toggle **Developer mode** on.
-3. Click **Load unpacked** and select this folder.
-4. Click the extension icon, then the ⚙ button to open Settings.
+## Architecture highlights
+
+- **Parallel worker pool** (5 concurrent DOIs) with per-domain throttling so we never hammer one publisher
+- **Magic-byte PDF validation** — every download is verified to actually start with `%PDF-`, so HTML stubs (PMC preprint pages, Cloudflare blocks, login walls) never get saved with a `.pdf` extension
+- **Run history** persisted in `chrome.storage.local`, last 10 runs accessible from the dropdown, with per-run RIS export
+- **Tab mode** (`⇱` button) for long batches — service workers can die when popups close, the tab stays alive
+- **Failure fallback URLs** carried through to history and RIS export
+
+## Install
+
+1. Unzip somewhere permanent
+2. `chrome://extensions` (or `brave://extensions`, `edge://extensions`)
+3. Turn on **Developer mode**
+4. Click **Load unpacked** → pick the `icompletist` folder
+5. Pin the icon to your toolbar
 
 ## Configure
 
-| Field | Required? | What it does |
-| --- | --- | --- |
-| Email | Yes | Sent to Unpaywall and NCBI to identify you. Standard etiquette, not authentication. |
-| NCBI API key | Optional | Raises PMC limit from 3/sec to 10/sec. Free at ncbi.nlm.nih.gov/account. |
-| OpenURL resolver | Recommended | Your library's link resolver base URL. Ask your librarian. |
-| Elsevier API key | Optional | Get one at https://dev.elsevier.com/. |
-| Elsevier Inst. Token | Optional | Needed for off-campus Elsevier TDM access. |
-| Springer API key | Optional | Get one at https://dev.springernature.com/. |
+Click the ⚙ button in the popup header. The only required field is **Email** (used by Unpaywall and PMC to identify you — standard etiquette, not authentication). Everything else is optional but each one adds capability:
 
-## Usage
+| Field | What it unlocks |
+| --- | --- |
+| Email | Unpaywall, PMC |
+| NCBI API key | Raises PMC rate limit from 3/sec to 10/sec |
+| Semantic Scholar API key | Removes shared-pool rate limits on the batch pre-pass |
+| CORE API key | The CORE step |
+| Downloads folder absolute path | `file://` URLs in RIS export (Zotero finds files automatically on import) |
+| OpenURL resolver | Institutional resolver step |
+| Elsevier API key (+ optional Inst. Token) | Elsevier TDM step |
+| Springer API key | Springer TDM step |
+| Wiley TDM token | Wiley TDM step |
+| IEEE API key | IEEE OA step |
 
-1. Paste a list of DOIs into the textarea (one per line, or pasted from any text — DOIs are auto-extracted).
-2. Click **Fetch articles**.
-3. Watch progress; PDFs are saved to your default Downloads folder under `icompletist/`.
-4. The results panel shows which source each article came from.
+## Use
 
-## What this does not do
+1. Paste identifiers into the textarea — one per line, comma-separated, or pasted from messy text. The regex picks them out.
+2. Optionally adjust the **subfolder** (default `icompletist/` under your Downloads directory)
+3. Click **Fetch articles**
+4. Watch progress; PDFs save automatically
+5. When done, the run appears in **Recent runs** — pick it from the dropdown to review results
+6. Click **Export RIS (for Zotero)** to get a `.ris` file you can import into Zotero with one click
 
-- It does **not** bypass paywalls. If your institution doesn't license a paper and no OA copy exists, you get "unavailable."
+## Zotero workflow
+
+1. In ICompletist settings, set your absolute Downloads path (e.g. `/home/you/Downloads`)
+2. Run a batch
+3. Click **Export RIS (for Zotero)**
+4. In Zotero: **File → Import…** → pick the `.ris` → check "Place imported items into new collection"
+5. Each entry imports with:
+   - Title/authors/journal/year auto-fetched by Zotero from the DOI
+   - The downloaded PDF linked as an attachment
+   - For unavailable items, clickable URLs to try manually
+
+## What this tool will not do
+
+- It does **not** bypass paywalls. If your institution doesn't license a paper and no OA copy exists, the result is `unavailable`.
 - It does **not** share or pool credentials between users.
-- It does **not** automate access for someone who lacks their own legitimate access path.
-
-## Extending
-
-- Add a new publisher TDM integration: drop a module in `lib/`, follow the shape of `elsevier.js`, then wire it into `background.js → processDoi`.
-- For Wiley TDM, the pattern is similar: see https://onlinelibrary.wiley.com/library-info/resources/text-and-datamining
-- For institutional proxies (EZproxy), the resolver URL pattern often just needs a `?url=` wrapper around the publisher URL. Configure that in the resolver base.
-
-## Legal note
-
-This tool is designed to operate within the terms of service of major publishers and within the licensing scope your institution holds. It does not enable access to content you do not personally have a license to read. If your institution's terms forbid programmatic access via the official TDM APIs (uncommon, but possible), don't use those modes.
+- It does **not** access any content you don't already have a personal right to read.
+- It does **not** scrape `files.core.ac.uk` URLs directly (per CORE's terms).
