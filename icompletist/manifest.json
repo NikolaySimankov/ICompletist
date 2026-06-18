@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "ICompletist",
-  "version": "0.9.0",
-  "description": "Bulk-fetch scientific articles legally: PMC, bioRxiv, arXiv, OpenReview, IEEE OA, Unpaywall, publisher TDM APIs, institutional resolver.",
+  "version": "0.10.0",
+  "description": "Bulk-fetch scientific articles legally: PMC, bioRxiv, arXiv, OpenReview, IEEE OA, Unpaywall, Semantic Scholar, CORE, publisher TDM APIs, institutional resolver.",
   "permissions": [
     "storage",
     "downloads",
@@ -19,6 +19,8 @@
     "https://www.medrxiv.org/*",
     "https://openreview.net/*",
     "https://ieeexploreapi.ieee.org/*",
+    "https://api.semanticscholar.org/*",
+    "https://api.core.ac.uk/*",
     "https://api.elsevier.com/*",
     "https://api.springernature.com/*",
     "https://api.wiley.com/*",

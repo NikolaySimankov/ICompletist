@@ -29,6 +29,18 @@
     <div class="hint">Raises your PMC request limit from 3/sec to 10/sec. Get one free at <a href="https://www.ncbi.nlm.nih.gov/account/" target="_blank">ncbi.nlm.nih.gov/account</a> → Settings → API Key Management.</div>
   </div>
 
+  <div class="field">
+    <label for="s2ApiKey">Semantic Scholar API key (optional, big speedup)</label>
+    <input type="text" id="s2ApiKey" placeholder="">
+    <div class="hint">Used to batch-fetch OA URLs for up to 500 DOIs in one request before the pipeline runs. Works without a key at lower rate limits, but a free key from <a href="https://www.semanticscholar.org/product/api" target="_blank">semanticscholar.org/product/api</a> makes large batches much faster.</div>
+  </div>
+
+  <div class="field">
+    <label for="coreApiKey">CORE API key (optional)</label>
+    <input type="text" id="coreApiKey" placeholder="">
+    <div class="hint">Covers ~200M OA papers from repositories Unpaywall sometimes misses. Free key at <a href="https://core.ac.uk/services/api" target="_blank">core.ac.uk/services/api</a>. Per CORE's terms, the extension only uses PDF URLs returned by their API — never constructs files.core.ac.uk URLs directly.</div>
+  </div>
+
   <h3>Institutional link resolver</h3>
   <div class="field">
     <label for="resolverBase">OpenURL resolver base URL</label>

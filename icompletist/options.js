@@ -1,5 +1,5 @@
 // options.js - persist settings.
-const fields = ["email", "ncbiApiKey", "resolverBase", "elsevierKey", "elsevierInstToken", "springerKey", "wileyToken", "ieeeKey"];
+const fields = ["email", "ncbiApiKey", "s2ApiKey", "coreApiKey", "resolverBase", "elsevierKey", "elsevierInstToken", "springerKey", "wileyToken", "ieeeKey"];
 
 chrome.storage.sync.get(fields.reduce((o, k) => ((o[k] = ""), o), {}), (data) => {
   for (const k of fields) document.getElementById(k).value = data[k] || "";
