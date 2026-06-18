@@ -27,7 +27,28 @@ import { runSearch, buildQueries } from "./lib/search/orchestrate.js";
 import { selectArticles } from "./lib/search/select.js";
 
 // Throttle: minimum gap between hits to the same publisher domain.
-const PUBLISHER_DELAY_MS = 2000;
+//
+// Before v2.0.0-beta5 every domain shared a single 2000ms ceiling — a value
+// chosen to respect Wiley's "≤1 req/s" TDM limit. The cost was that OA
+// aggregators (CORE, PMC) — which actually support 5-10 req/s — were
+// throttled to the same conservative rate, so OA-heavy batches spent most
+// of their wall time in throttle waits even though no upstream API would
+// have complained.
+//
+// The per-domain table below matches each source to its published rate
+// limit (or a safe estimate when the docs are vague). For a typical 30-DOI
+// OA-heavy batch this cuts wall time roughly 10×.
+const DEFAULT_DELAY_MS = 500;
+const DOMAIN_DELAYS_MS = {
+  // Publisher TDM endpoints — strict ceilings, respect them.
+  "wiley-tdm": 2000,    // Wiley docs: ≤1 req/s
+  "elsevier-tdm": 1000, // Elsevier ~2 req/s in practice; be conservative
+  "springer-tdm": 500,  // No strict limit documented
+  // OA aggregators — generous limits, no reason to slow-walk them.
+  "core": 200,          // CORE docs: ~10 req/s; 5 req/s leaves headroom
+  "ncbi": 350,          // NCBI: 3 req/s without API key, 10 with one — safe for both
+  "ieee": 500,          // IEEE has daily quotas, not strict per-second limits
+};
 const lastHit = new Map();
 
 // Concurrency: max DOIs being processed in parallel. OA sources don't share
@@ -36,10 +57,14 @@ const lastHit = new Map();
 const MAX_CONCURRENT = 5;
 
 async function throttle(domain) {
-  // Serialize calls to the same domain across all workers.
+  // Serialize calls to the same domain across all workers using the
+  // domain-specific delay. Falls back to DEFAULT_DELAY_MS for any domain
+  // not in the table (e.g. publisher names from publisherFromDoi when used
+  // as the institutional resolver throttle key).
+  const delay = DOMAIN_DELAYS_MS[domain] ?? DEFAULT_DELAY_MS;
   const now = Date.now();
   const prev = lastHit.get(domain) || 0;
-  const wait = Math.max(0, PUBLISHER_DELAY_MS - (now - prev));
+  const wait = Math.max(0, delay - (now - prev));
   // Update lastHit BEFORE the wait so the next caller doesn't read a stale value.
   lastHit.set(domain, now + wait);
   if (wait) await new Promise((r) => setTimeout(r, wait));
@@ -68,18 +93,35 @@ async function getSettings() {
 function publisherFromDoi(doi) {
   const prefix = doi.split("/")[0];
   const map = {
+    // Elsevier family
     "10.1016": "elsevier",
     "10.1006": "elsevier",
+    // Springer Nature family
     "10.1007": "springer",
     "10.1038": "springer",
     "10.1186": "springer",
+    "10.1057": "springer", // Palgrave Macmillan
+    // Wiley family
     "10.1002": "wiley",
     "10.1111": "wiley",
+    // Preprint servers
     "10.1101": "biorxiv",
+    // IEEE
     "10.1109": "ieee",
-    "10.1126": "aaas",
-    "10.1093": "oup",
+    // Society / society-affiliated publishers
+    "10.1126": "aaas",            // Science
+    "10.1093": "oup",             // Oxford University Press
     "10.1080": "taylor-francis",
+    "10.1371": "plos",            // PLOS — fully OA, Unpaywall usually finds these fast
+    "10.3389": "frontiers",       // Frontiers — fully OA
+    "10.1073": "pnas",            // PNAS — mixed OA / hybrid
+    "10.1098": "royalsociety",    // Royal Society journals
+    "10.1039": "rsc",             // Royal Society of Chemistry
+    "10.1021": "acs",             // American Chemical Society — paywalled, no TDM module yet
+    "10.1094": "aps",             // American Phytopathological Society
+    "10.1146": "annualreviews",   // Annual Reviews
+    "10.4049": "aai",             // American Association of Immunologists
+    "10.1158": "aacr",            // American Association for Cancer Research
   };
   return map[prefix] || "unknown";
 }
