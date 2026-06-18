@@ -20,7 +20,10 @@ export function isBiorxivDoi(doi) {
 }
 
 async function tryServer(doi, server) {
-  const url = `https://api.biorxiv.org/details/${server}/${encodeURIComponent(doi)}`;
+  // The bioRxiv API expects the raw DOI in the URL path, including the literal
+  // slash between prefix and suffix. URL-encoding the slash to %2F yields a
+  // 404 silently.
+  const url = `https://api.biorxiv.org/details/${server}/${doi}/na/json`;
   try {
     const res = await fetch(url);
     if (!res.ok) {
@@ -48,21 +51,31 @@ export async function biorxivFetch(doi) {
   if (!record) return { found: false, reason: "Not in bioRxiv or medRxiv" };
 
   const host = record.server === "medrxiv" ? "www.medrxiv.org" : "www.biorxiv.org";
-  const version = record.version || 1;
-  const pdfUrl = `https://${host}/content/${doi}v${version}.full.pdf`;
-  console.info(`bioRxiv: fetching ${pdfUrl}`);
+  // Try the version the API reports first, then fall back to v1/v2/v3 in case
+  // the response lacks a version field or is stale.
+  const declaredVersion = parseInt(record.version, 10);
+  const versionsToTry = [];
+  if (!isNaN(declaredVersion)) versionsToTry.push(declaredVersion);
+  for (const v of [1, 2, 3, 4]) if (!versionsToTry.includes(v)) versionsToTry.push(v);
 
-  try {
-    const pdfRes = await fetch(pdfUrl, { redirect: "follow" });
-    if (!pdfRes.ok) {
-      return { found: false, status: pdfRes.status, reason: `PDF fetch returned ${pdfRes.status}` };
+  let lastError = null;
+  for (const v of versionsToTry) {
+    const pdfUrl = `https://${host}/content/${doi}v${v}.full.pdf`;
+    console.info(`bioRxiv: fetching ${pdfUrl}`);
+    try {
+      const pdfRes = await fetch(pdfUrl, { redirect: "follow" });
+      if (!pdfRes.ok) {
+        lastError = `v${v} returned ${pdfRes.status}`;
+        continue;
+      }
+      const blob = await pdfRes.blob();
+      if (await isPdfBlob(blob)) {
+        return { found: true, blob, server: record.server, version: v, title: record.title };
+      }
+      lastError = `v${v} response was not a PDF (type=${blob.type}, size=${blob.size})`;
+    } catch (e) {
+      lastError = `v${v} fetch error: ${e.message}`;
     }
-    const blob = await pdfRes.blob();
-    if (await isPdfBlob(blob)) {
-      return { found: true, blob, server: record.server, version, title: record.title };
-    }
-    return { found: false, reason: `Response was not a PDF (type=${blob.type}, size=${blob.size})` };
-  } catch (e) {
-    return { found: false, reason: `PDF fetch error: ${e.message}` };
   }
+  return { found: false, reason: lastError || "All version attempts failed" };
 }
