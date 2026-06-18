@@ -21,8 +21,9 @@ import { wileyTdmFetch } from "./lib/wiley.js";
 import { coreLookup } from "./lib/core.js";
 import { s2BatchLookup } from "./lib/semanticscholar.js";
 import { resolveOpenUrl, fetchWithSession } from "./lib/resolver.js";
-import { startRun, appendToRun, finishRun } from "./lib/history.js";
+import { startRun, appendToRun, finishRun, replaceRunResults } from "./lib/history.js";
 import { isPdfBlob, describeBlob } from "./lib/pdfcheck.js";
+import { runSearch, buildQueries } from "./lib/search/orchestrate.js";
 
 // Throttle: minimum gap between hits to the same publisher domain.
 const PUBLISHER_DELAY_MS = 2000;
@@ -479,5 +480,111 @@ chrome.runtime.onConnect.addListener((port) => {
     await finishRun(runId, summary);
     safePost({ type: "progress", done: items.length, total: items.length });
     safePost({ type: "done", summary });
+  });
+});
+
+// ---- Search job handler ----
+// A separate port channel for SEARCH runs. The popup connects to "search-job",
+// posts a message of shape:
+//   { type: "start", spec, sources, limit }
+// and receives:
+//   { type: "queries", queries }                — the per-DB query strings
+//   { type: "source-progress", source, done, total }
+//   { type: "source-complete", source, items: N, total, error }
+//   { type: "done", items: [...], perSource, runId }
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name !== "search-job") return;
+  let portAlive = true;
+  let cancelled = false;
+  port.onDisconnect.addListener(() => { portAlive = false; });
+  const safePost = (msg) => {
+    if (!portAlive) return;
+    try { port.postMessage(msg); } catch { portAlive = false; }
+  };
+
+  port.onMessage.addListener(async (msg) => {
+    if (msg.type === "cancel") { cancelled = true; return; }
+    if (msg.type !== "start") return;
+
+    const { spec, sources, limit } = msg;
+    const settings = await getSettings();
+    const queries = buildQueries(spec);
+    safePost({ type: "queries", queries });
+
+    // Create the run in history immediately so partial progress is recoverable.
+    const runId = await startRun([], {
+      kind: "search",
+      spec,
+      sources,
+      queries,
+    });
+
+    try {
+      const { items, perSource } = await runSearch(spec, {
+        sources,
+        limit,
+        settings,
+        onSourceProgress: (src, p) => {
+          if (cancelled) return;
+          safePost({ type: "source-progress", source: src, done: p.done, total: p.total });
+        },
+        onSourceComplete: (src, r) => {
+          safePost({
+            type: "source-complete",
+            source: src,
+            items: r.items.length,
+            total: r.total,
+            error: r.error,
+          });
+        },
+      });
+
+      if (cancelled) {
+        safePost({ type: "done", items: [], perSource, runId, cancelled: true });
+        return;
+      }
+
+      // Persist the deduped items as the run's results. We store the rich
+      // metadata (title, year, journal, abstract if present) so the user can
+      // browse the search results later and optionally hand them off to the
+      // PDF download pipeline.
+      const results = items.map((it) => ({
+        doi: it.doi || it.arxivId ? (it.doi || `arxiv:${it.arxivId}`) : (it.title || it.id),
+        source: "search",
+        // Carry richer fields:
+        title: it.title || null,
+        year: it.year || null,
+        journal: it.journal || null,
+        authors: it.authors || [],
+        abstract: it.abstract || null,
+        sources: it.sources || [],
+        identifiers: {
+          doi: it.doi || null,
+          pmid: it.pmid || null,
+          pmcid: it.pmcid || null,
+          arxivId: it.arxivId || null,
+          s2Id: it.s2Id || null,
+          coreId: it.coreId || null,
+          scopusId: it.scopusId || null,
+        },
+        openAccessUrl: it.openAccessUrl || null,
+        sourceUrl: it.sourceUrl || null,
+        at: Date.now(),
+      }));
+      await replaceRunResults(runId, results);
+
+      const summary = {
+        total: items.length,
+        ...Object.fromEntries(
+          Object.entries(perSource).map(([k, v]) => [k, v.error ? `error: ${v.error}` : v.items.length])
+        ),
+      };
+      await finishRun(runId, summary);
+
+      safePost({ type: "done", items, perSource, runId });
+    } catch (e) {
+      console.error("Search job failed:", e);
+      safePost({ type: "done", items: [], perSource: {}, error: e.message, runId });
+    }
   });
 });

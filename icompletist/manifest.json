@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "ICompletist",
-  "version": "1.0.0",
-  "description": "Bulk-fetch scientific articles legally: PMC, bioRxiv, arXiv, OpenReview, IEEE OA, Unpaywall, Semantic Scholar, CORE, publisher TDM APIs, institutional resolver.",
+  "version": "1.1.0",
+  "description": "Search and bulk-fetch scientific articles legally. v2 adds multi-database search across PubMed, Scopus, Semantic Scholar, and CORE.",
   "permissions": [
     "storage",
     "downloads",
@@ -12,6 +12,7 @@
   "host_permissions": [
     "https://api.unpaywall.org/*",
     "https://www.ncbi.nlm.nih.gov/*",
+    "https://eutils.ncbi.nlm.nih.gov/*",
     "https://europepmc.org/*",
     "https://arxiv.org/*",
     "https://api.biorxiv.org/*",

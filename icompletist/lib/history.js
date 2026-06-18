@@ -1,20 +1,28 @@
 // lib/history.js - Run-based history in chrome.storage.local.
 //
-// A "run" is one batch (one "Fetch articles" click). We keep the last
-// MAX_RUNS runs and discard older ones.
+// A "run" is one user action (one "Fetch articles" click or one search). We
+// keep the last MAX_RUNS runs and discard older ones.
+//
+// Two kinds of runs:
+//   kind: "fetch"   — items are identifiers being downloaded
+//   kind: "search"  — items are search results from one or more DBs
 
 const KEY = "runs";
 const MAX_RUNS = 10;
 
-export async function startRun(dois) {
+export async function startRun(items, { kind = "fetch", spec = null, sources = null, queries = null } = {}) {
   const { [KEY]: runs = [] } = await chrome.storage.local.get({ [KEY]: [] });
   const run = {
     id: Date.now(),
+    kind,
     startedAt: Date.now(),
     finishedAt: null,
-    total: dois.length,
+    total: items.length,
     results: [],
   };
+  if (spec) run.spec = spec;
+  if (sources) run.sources = sources;
+  if (queries) run.queries = queries;
   runs.push(run);
   const trimmed = runs.length > MAX_RUNS ? runs.slice(-MAX_RUNS) : runs;
   await chrome.storage.local.set({ [KEY]: trimmed });
@@ -34,6 +42,16 @@ export async function appendToRun(runId, entry) {
     tryUrls: Array.isArray(entry.tryUrls) ? entry.tryUrls : null,
     at: Date.now(),
   });
+  await chrome.storage.local.set({ [KEY]: runs });
+}
+
+// Used by search runs that produce all items at once.
+export async function replaceRunResults(runId, results) {
+  const { [KEY]: runs = [] } = await chrome.storage.local.get({ [KEY]: [] });
+  const run = runs.find((r) => r.id === runId);
+  if (!run) return;
+  run.results = results;
+  run.total = results.length;
   await chrome.storage.local.set({ [KEY]: runs });
 }
 

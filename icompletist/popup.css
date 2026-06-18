@@ -282,3 +282,154 @@ button.primary:hover { background: var(--accent); border-color: var(--accent); }
   margin-top: 10px;
   gap: 8px;
 }
+
+/* ---- Search mode UI ---- */
+
+.mode-toggle {
+  display: flex;
+  gap: 0;
+  margin-bottom: 14px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.mode-btn {
+  flex: 1;
+  padding: 7px 10px;
+  background: white;
+  border: none;
+  border-right: 1px solid var(--line);
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--muted);
+}
+.mode-btn:last-child { border-right: none; }
+.mode-btn:hover { background: var(--bg); }
+.mode-btn.active {
+  background: var(--ink);
+  color: white;
+}
+
+.query-error {
+  background: rgba(155, 34, 38, 0.08);
+  color: var(--fail);
+  padding: 6px 10px;
+  border-radius: 3px;
+  font-size: 11px;
+  margin-top: 6px;
+  white-space: pre-wrap;
+}
+
+.search-controls {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.control-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.control-group > label:first-child {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin: 0;
+}
+
+.year-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.year-row input {
+  flex: 1;
+  padding: 5px 8px;
+  font-size: 11px;
+}
+.year-row span { color: var(--muted); }
+
+.control-group select {
+  width: 100%;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  background: white;
+  font-family: inherit;
+  font-size: 11px;
+  border-radius: 3px;
+}
+
+.checkbox-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.checkbox-row label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--ink);
+  text-transform: none;
+  letter-spacing: normal;
+  margin: 0;
+  cursor: pointer;
+}
+.checkbox-row input[type="checkbox"] { margin: 0; }
+.checkbox-row input[type="checkbox"]:disabled + span,
+.checkbox-row label:has(input:disabled) { color: var(--muted); cursor: not-allowed; }
+
+#limit-input {
+  width: 100%;
+  padding: 5px 8px;
+  font-size: 11px;
+}
+
+/* Per-source live progress shown during search */
+.search-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 10px;
+  font-size: 11px;
+}
+.search-progress .src-row {
+  display: grid;
+  grid-template-columns: 110px 1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+.search-progress .src-name { color: var(--muted); }
+.search-progress .src-bar {
+  height: 3px;
+  background: var(--line);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.search-progress .src-bar > div {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.2s;
+}
+.search-progress .src-status { font-family: "SF Mono", monospace; color: var(--ink); }
+.search-progress .src-status.done { color: var(--oa); }
+.search-progress .src-status.err { color: var(--fail); }
+
+/* Tab mode: wider search-controls layout */
+body[data-mode="tab"] .search-controls {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+/* Indicator inside the run dropdown when this run was a search */
+.run-kind {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin-right: 4px;
+}
