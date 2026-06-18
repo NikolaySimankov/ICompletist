@@ -519,7 +519,7 @@ async function processItem(item, settings, subfolder, s2Cache) {
   if (item.type === "url") {
     sourceUrl = item.value;
     console.info(`[url] resolving DOI for ${item.value}`);
-    const doi = await doiFromUrl(item.value, { email: settings.email });
+    const doi = await doiFromUrl(item.value, settings);
     if (!doi) {
       console.info(`[url] no DOI found on ${item.value}`);
       return {

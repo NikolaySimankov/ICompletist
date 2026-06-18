@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ICompletist",
-  "version": "1.9.0",
+  "version": "1.10.0",
   "description": "Search and bulk-fetch scientific articles legally. v2 adds multi-database search, optional ENSURE precision filter, Crossref ENRICH for identical RIS in both modes, URL input (DOI auto-discovered from the page), per-source throttling, publisher-native APIs first, skip-if-already-downloaded, and service-worker keepalive.",
   "permissions": [
     "storage",

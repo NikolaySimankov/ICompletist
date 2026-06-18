@@ -2,25 +2,30 @@
 //
 // Users can paste publisher / repository / landing-page URLs instead of bare
 // identifiers. To make those behave exactly like a DOI (same fetch cascade,
-// same RIS output), we first discover the DOI for the page:
+// same RIS output), we discover the DOI for the page in this order:
 //
-//   1. The DOI may already be in the URL path (doi.org/10.x, publisher
-//      /doi/10.x links, etc.) — no network needed.
-//   2. Otherwise fetch the HTML and read the standard bibliographic meta
-//      tags every major publisher emits for Google Scholar / Zotero:
-//        <meta name="citation_doi" content="10.x">
-//        <meta name="dc.identifier" content="doi:10.x">
-//        <meta name="prism.doi" content="10.x">
-//      (attribute order varies, so we scan each <meta> tag generically.)
-//   3. Fall back to the post-redirect URL, then any DOI-looking string in
-//      the page body (covers JSON-LD blocks and inline references).
+//   1. DOI already present in the URL path (doi.org/10.x, Frontiers
+//      /articles/10.x/full, Wiley /doi/10.x, …). normalizeDoi() strips the
+//      /full, /pdf and vN artifacts those URLs carry.
+//   2. Biomedical ID-bearing hosts resolved via authoritative APIs instead
+//      of scraping, because the DOI is NOT in the URL:
+//        - PMC      (pmc.ncbi.nlm.nih.gov/articles/PMC123, europepmc /PMC123)
+//                   → NCBI idconv  (PMCID → DOI)
+//        - PubMed   (pubmed.ncbi.nlm.nih.gov/12345)
+//                   → NCBI idconv  (PMID → DOI)
+//        - ScienceDirect (/science/article/pii/Sxxxx)
+//                   → Elsevier article API (PII → DOI), when a key is set
+//   3. Generic fallback: fetch the HTML and read the standard bibliographic
+//      meta tags (citation_doi, dc.identifier, prism.doi), then the
+//      post-redirect URL, then any DOI in the body.
 //
-// NOTE: service workers have no DOMParser, so meta-tag extraction is done
-// with regex over the raw HTML rather than a parsed DOM.
+// NOTE: service workers have no DOMParser, so meta-tag extraction is regex
+// over the raw HTML.
+
+import { normalizeDoi } from "./identifiers.js";
 
 const DOI_RE = /10\.\d{4,9}\/[-._;()/:a-z0-9]+/i;
 
-// Meta tag names (lower-cased) that carry a DOI, in rough priority order.
 const DOI_META_NAMES = new Set([
   "citation_doi",
   "bepress_citation_doi",
@@ -31,16 +36,13 @@ const DOI_META_NAMES = new Set([
 ]);
 
 function cleanDoi(s) {
-  if (!s) return null;
-  const m = String(s).match(DOI_RE);
-  if (!m) return null;
-  return m[0].replace(/[.,;]+$/, "").toLowerCase();
+  if (!s || !DOI_RE.test(String(s))) return null;
+  const d = normalizeDoi(s);
+  return d || null;
 }
 
 function extractDoiFromHtml(html) {
   if (!html) return null;
-  // Scan every <meta ...> tag; pull name/property + content regardless of
-  // attribute order.
   const metaRe = /<meta\b[^>]*>/gi;
   let tag;
   while ((tag = metaRe.exec(html)) !== null) {
@@ -56,13 +58,74 @@ function extractDoiFromHtml(html) {
   return cleanDoi(html);
 }
 
+// PMID/PMCID → DOI via NCBI's ID converter. Works for both id types.
+async function idconvToDoi(id, email) {
+  const params = new URLSearchParams({ ids: id, format: "json", tool: "icompletist" });
+  if (email) params.set("email", email);
+  let res;
+  try {
+    res = await fetch(`https://www.ncbi.nlm.nih.gov/pmc/utils/idconv/v1.0/?${params}`);
+  } catch (e) {
+    console.warn(`idconv network error for ${id}:`, e);
+    return null;
+  }
+  if (!res.ok) return null;
+  let data;
+  try { data = await res.json(); } catch { return null; }
+  const rec = data.records?.[0];
+  if (!rec || rec.status === "error") return null;
+  return rec.doi ? cleanDoi(rec.doi) : null;
+}
+
+// ScienceDirect PII → DOI via the Elsevier article API (requires a key).
+async function piiToDoi(pii, settings) {
+  if (!settings?.elsevierKey) return null;
+  const headers = {
+    "X-ELS-APIKey": settings.elsevierKey,
+    "Accept": "application/json",
+  };
+  if (settings.elsevierInstToken) headers["X-ELS-Insttoken"] = settings.elsevierInstToken;
+  let res;
+  try {
+    res = await fetch(`https://api.elsevier.com/content/article/pii/${encodeURIComponent(pii)}`, { headers });
+  } catch (e) {
+    console.warn(`Elsevier PII lookup network error for ${pii}:`, e);
+    return null;
+  }
+  if (!res.ok) return null;
+  let data;
+  try { data = await res.json(); } catch { return null; }
+  const doi = data?.["full-text-retrieval-response"]?.coredata?.["prism:doi"];
+  return doi ? cleanDoi(doi) : null;
+}
+
 // Resolve a single URL to a DOI string, or null if none can be found.
-export async function doiFromUrl(url, { email } = {}) {
-  // 1. DOI already present in the given URL.
+// `settings` carries email (NCBI etiquette) and the Elsevier key (PII lookup).
+export async function doiFromUrl(url, settings = {}) {
+  const email = settings.email;
+
+  // 1. DOI already in the URL path.
   const inUrl = cleanDoi(url);
   if (inUrl) return inUrl;
 
-  // 2. Fetch the page and inspect meta tags + final URL + body.
+  // 2. ID-bearing hosts — resolve via the right API rather than scraping.
+  const pmc = url.match(/\bPMC(\d+)\b/i);
+  if (pmc) {
+    const doi = await idconvToDoi(`PMC${pmc[1]}`, email);
+    if (doi) return doi;
+  }
+  const pubmed = url.match(/pubmed\.ncbi\.nlm\.nih\.gov\/(\d+)/i);
+  if (pubmed) {
+    const doi = await idconvToDoi(pubmed[1], email);
+    if (doi) return doi;
+  }
+  const pii = url.match(/\/(?:pii|article)\/(S[0-9X]+)\b/i);
+  if (pii) {
+    const doi = await piiToDoi(pii[1], settings);
+    if (doi) return doi;
+  }
+
+  // 3. Generic: fetch the page and read meta tags / final URL / body.
   let res;
   try {
     res = await fetch(url, {
@@ -79,7 +142,6 @@ export async function doiFromUrl(url, { email } = {}) {
   }
   if (!res.ok) {
     console.info(`doiFromUrl: ${url} returned ${res.status}`);
-    // The redirect chain might still have landed on a DOI-bearing URL.
     return cleanDoi(res.url);
   }
 

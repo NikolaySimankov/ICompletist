@@ -9,7 +9,45 @@
 //                  Or a bare id of the form ABC123def (8+ chars alphanumeric + _ -)
 //                  when prefixed with "openreview:" to disambiguate.
 
-// Returns: { type: 'doi'|'arxiv'|'openreview', value: string, original: string }
+// Publisher "view" suffixes that get appended to a DOI in a URL path but are
+// NOT part of the DOI itself: Frontiers /full and /pdf, Wiley /pdf /epdf
+// /abstract, etc. Stripped from the end, possibly stacked (/full/pdf).
+const DOI_PATH_JUNK_RE =
+  /\/(?:pdf|pdfdirect|full|fulltext|abstract|epdf|meta|html|figures?|references|citations|tab-figures|tab-pdf|tab-citations)\/?$/i;
+
+// Canonicalize a DOI string: lower-case, pull out just the DOI token if it's
+// embedded in a URL or surrounded by text, and strip artifacts that come from
+// copying DOIs out of publisher URLs:
+//   - trailing sentence punctuation and slashes
+//   - publisher view-suffixes (/pdf, /full, /epdf, …)
+//   - preprint version suffixes (bioRxiv/medRxiv/new servers: the dated
+//     ID form YYYY.MM.DD.NNNNNN with a trailing vN, plus legacy 10.1101 IDs)
+//
+// Examples:
+//   10.3389/fmolb.2024.1472796/pdf   -> 10.3389/fmolb.2024.1472796
+//   10.3389/fhort.2024.1388028/full  -> 10.3389/fhort.2024.1388028
+//   10.1101/2025.05.26.656232v1      -> 10.1101/2025.05.26.656232
+//   10.64898/2026.04.02.716166v2     -> 10.64898/2026.04.02.716166
+export function normalizeDoi(raw) {
+  if (!raw) return "";
+  let d = String(raw).trim().toLowerCase();
+  // Extract just the DOI token if there's surrounding URL/text.
+  const m = d.match(/10\.\d{4,9}\/[-._;()/:a-z0-9]+/i);
+  if (m) d = m[0];
+  d = d.replace(/[.,;]+$/, "").replace(/\/+$/, "");
+  // Strip stacked publisher view-suffixes (/full, /pdf, …).
+  let prev;
+  do {
+    prev = d;
+    d = d.replace(DOI_PATH_JUNK_RE, "").replace(/\/+$/, "");
+  } while (d !== prev);
+  // Preprint version suffixes.
+  d = d.replace(/(\d{4}\.\d{2}\.\d{2}\.\d+)v\d+$/i, "$1");
+  if (/^10\.1101\//i.test(d)) d = d.replace(/v\d+$/i, "");
+  return d;
+}
+
+// Returns: { type: 'doi'|'arxiv'|'openreview'|'url', value: string, original: string }
 export function parseIdentifiers(text) {
   const out = [];
   const seen = new Set();
@@ -61,7 +99,7 @@ export function parseIdentifiers(text) {
     const end = start + m[0].length;
     const overlaps = consumed.some(([s, e]) => start < e && end > s);
     if (overlaps) continue;
-    const doi = m[0].toLowerCase().replace(/[.,;]+$/, "");
+    const doi = normalizeDoi(m[0]);
     push("doi", doi, m[0]);
     // Record the range so the URL pass below doesn't re-capture the
     // publisher/doi.org URL that contained this DOI.
