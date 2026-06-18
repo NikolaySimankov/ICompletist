@@ -11,6 +11,8 @@
 //
 // Docs: https://docs.openreview.net/getting-started/using-the-api/notes
 
+import { isPdfBlob } from "./pdfcheck.js";
+
 export async function openreviewFetch(id) {
   if (!id) return { found: false, reason: "No OpenReview ID provided" };
 
@@ -22,7 +24,7 @@ export async function openreviewFetch(id) {
   }
 
   const blob = await res.blob();
-  if (blob.type.includes("pdf") || blob.size > 10000) {
+  if (await isPdfBlob(blob)) {
     return { found: true, blob, id };
   }
   return { found: false, reason: "Response was not a PDF (paper may be withdrawn or private)" };

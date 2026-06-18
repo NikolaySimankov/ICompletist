@@ -1,24 +1,26 @@
-// lib/pmc.js - PubMed Central full-text fetcher via NCBI E-utilities.
-//
-// PMC hosts free full text of millions of biomedical articles. Many are
-// deposited under NIH public access policy. No API key required, but NCBI
-// asks you to identify yourself via tool/email params and limits unauthenticated
-// requests to 3/sec. With an API key (https://www.ncbi.nlm.nih.gov/account/),
-// the limit goes up to 10/sec.
+// lib/pmc.js - PubMed Central full-text fetcher.
 //
 // Two-step flow:
 //   1. ID conversion: DOI -> PMCID via idconv.ncbi.nlm.nih.gov
-//   2. Fetch PDF from europepmc.org (more reliable PDF delivery than PMC itself)
-//      or fall back to the NCBI PMC article page.
+//   2. Fetch PDF from europepmc.org (preferred) or NCBI PMC.
 //
-// Docs:
-//   https://www.ncbi.nlm.nih.gov/pmc/tools/id-converter-api/
-//   https://europepmc.org/RestfulWebService
+// IMPORTANT: bioRxiv/medRxiv DOIs (10.1101/...) often resolve to a PMC record
+// via the NIH preprint pilot. These records are STUBS — they have a PMCID but
+// no real PDF; the URL returns an HTML "this is a preprint, see bioRxiv" page.
+// We detect this early and refuse, so the pipeline falls through to the
+// bioRxiv module which has the actual PDF.
+
+import { isPdfBlob, describeBlob } from "./pdfcheck.js";
 
 const TOOL_NAME = "icompletist";
 
 export async function pmcLookup(doi, { email, apiKey } = {}) {
-  // Step 1: DOI -> PMCID
+  // bioRxiv/medRxiv preprints have PMC stubs, not real PMC PDFs. Skip here so
+  // the bioRxiv module handles them.
+  if (/^10\.1101\//i.test(doi)) {
+    return { found: false, reason: "bioRxiv/medRxiv DOI — handled by bioRxiv module" };
+  }
+
   const params = new URLSearchParams({
     ids: doi,
     format: "json",
@@ -36,32 +38,39 @@ export async function pmcLookup(doi, { email, apiKey } = {}) {
   const pmcid = record?.pmcid;
   if (!pmcid) return { found: false, reason: "Not in PMC" };
 
-  // Some PMC records have an embargo or are author-manuscript-only.
   if (record.live === "false" || record.status === "error") {
     return { found: false, reason: "PMC record not yet live (embargoed)" };
   }
 
-  // Step 2: Fetch PDF. Europe PMC's direct PDF URL is the most reliable.
-  // Pattern: https://europepmc.org/articles/PMC1234567?pdf=render
-  const pdfUrl = `https://europepmc.org/articles/${pmcid}?pdf=render`;
-  const pdfRes = await fetch(pdfUrl, { redirect: "follow" });
-
-  if (pdfRes.ok) {
-    const blob = await pdfRes.blob();
-    if (blob.type.includes("pdf") || blob.size > 10000) {
-      return { found: true, blob, pmcid, source: "europepmc" };
+  // Try Europe PMC first.
+  const europePdfUrl = `https://europepmc.org/articles/${pmcid}?pdf=render`;
+  try {
+    const res = await fetch(europePdfUrl, { redirect: "follow" });
+    if (res.ok) {
+      const blob = await res.blob();
+      if (await isPdfBlob(blob)) {
+        return { found: true, blob, pmcid, source: "europepmc" };
+      }
+      console.info(`PMC: europepmc returned non-PDF for ${pmcid}`, await describeBlob(blob));
     }
+  } catch (e) {
+    console.warn("PMC europepmc fetch error:", e);
   }
 
-  // Fallback: NCBI PMC direct PDF link (pattern varies; this is current as of 2024+).
+  // Fallback to NCBI PMC.
   const ncbiPdfUrl = `https://www.ncbi.nlm.nih.gov/pmc/articles/${pmcid}/pdf/`;
-  const ncbiRes = await fetch(ncbiPdfUrl, { redirect: "follow" });
-  if (ncbiRes.ok) {
-    const blob = await ncbiRes.blob();
-    if (blob.type.includes("pdf") || blob.size > 10000) {
-      return { found: true, blob, pmcid, source: "ncbi-pmc" };
+  try {
+    const res = await fetch(ncbiPdfUrl, { redirect: "follow" });
+    if (res.ok) {
+      const blob = await res.blob();
+      if (await isPdfBlob(blob)) {
+        return { found: true, blob, pmcid, source: "ncbi-pmc" };
+      }
+      console.info(`PMC: ncbi-pmc returned non-PDF for ${pmcid}`, await describeBlob(blob));
     }
+  } catch (e) {
+    console.warn("PMC ncbi fetch error:", e);
   }
 
-  return { found: false, pmcid, reason: "PMCID found but PDF not retrievable" };
+  return { found: false, pmcid, reason: "PMCID found but PDF not retrievable (likely preprint stub or embargoed)" };
 }

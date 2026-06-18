@@ -19,6 +19,8 @@
 // Get an API key: https://developer.ieee.org/getting_started (free, requires
 // IEEE account; no institutional contract needed for the basic OA-aware API).
 
+import { isPdfBlob } from "./pdfcheck.js";
+
 export function isIeeeDoi(doi) {
   return /^10\.1109\//i.test(doi);
 }
@@ -48,7 +50,7 @@ export async function ieeeOaFetch(doi, { apiKey } = {}) {
   if (!pdfRes.ok) return { found: false, status: pdfRes.status };
 
   const blob = await pdfRes.blob();
-  if (blob.type.includes("pdf") || blob.size > 10000) {
+  if (await isPdfBlob(blob)) {
     return { found: true, blob, title: article.title };
   }
   return { found: false, reason: "Response was not a PDF" };

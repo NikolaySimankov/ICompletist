@@ -14,6 +14,8 @@
 //
 // Get a key: https://core.ac.uk/services/api
 
+import { isPdfBlob, describeBlob } from "./pdfcheck.js";
+
 const ENDPOINT = "https://api.core.ac.uk/v3/search/works";
 
 // Pick the best PDF URL from a CORE work record. Preference order:
@@ -92,8 +94,8 @@ export async function coreLookup(doi, { apiKey } = {}) {
   }
 
   const blob = await pdfRes.blob();
-  if (blob.type.includes("pdf") || blob.size > 10000) {
+  if (await isPdfBlob(blob)) {
     return { found: true, blob, title: work.title, via: pick.source };
   }
-  return { found: false, reason: `CORE response was not a PDF (${pick.source}, type=${blob.type}, size=${blob.size})` };
+  return { found: false, reason: `CORE response was not a PDF (${pick.source}, ${await describeBlob(blob)})` };
 }

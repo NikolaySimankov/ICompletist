@@ -22,6 +22,7 @@ import { coreLookup } from "./lib/core.js";
 import { s2BatchLookup } from "./lib/semanticscholar.js";
 import { resolveOpenUrl, fetchWithSession } from "./lib/resolver.js";
 import { startRun, appendToRun, finishRun } from "./lib/history.js";
+import { isPdfBlob, describeBlob } from "./lib/pdfcheck.js";
 
 // Throttle: minimum gap between hits to the same publisher domain.
 const PUBLISHER_DELAY_MS = 2000;
@@ -110,7 +111,10 @@ async function tryDirectPdf(pdfUrl, identifier, subfolder) {
     const res = await fetch(pdfUrl, { redirect: "follow" });
     if (!res.ok) return null;
     const blob = await res.blob();
-    if (!blob.type.includes("pdf") && blob.size <= 10000) return null;
+    if (!(await isPdfBlob(blob))) {
+      console.info(`tryDirectPdf: non-PDF response from ${pdfUrl} —`, await describeBlob(blob));
+      return null;
+    }
     return await downloadBlob(blob, identifier, subfolder);
   } catch (e) {
     return null;
@@ -244,11 +248,11 @@ async function handleDoi(item, settings, subfolder, s2Cache) {
         const pdfRes = await fetch(up.pdfUrl);
         if (pdfRes.ok) {
           const blob = await pdfRes.blob();
-          if (blob.type.includes("pdf") || blob.size > 10000) {
+          if (await isPdfBlob(blob)) {
             const filename = await downloadBlob(blob, doi, subfolder);
             return { doi, source: "oa", title: up.title, license: up.license, filename };
           }
-          console.warn("Unpaywall returned non-PDF for", doi, "type:", blob.type, "size:", blob.size);
+          console.warn("Unpaywall returned non-PDF for", doi, await describeBlob(blob));
         }
       }
     } catch (e) {

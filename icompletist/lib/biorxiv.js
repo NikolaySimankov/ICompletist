@@ -13,6 +13,8 @@
 //
 // No auth, no rate limit issues for normal use. Both servers are fully OA.
 
+import { isPdfBlob } from "./pdfcheck.js";
+
 export function isBiorxivDoi(doi) {
   return /^10\.1101\//i.test(doi);
 }
@@ -44,7 +46,7 @@ export async function biorxivFetch(doi) {
   if (!pdfRes.ok) return { found: false, status: pdfRes.status, reason: "PDF fetch failed" };
 
   const blob = await pdfRes.blob();
-  if (blob.type.includes("pdf") || blob.size > 10000) {
+  if (await isPdfBlob(blob)) {
     return { found: true, blob, server: record.server, version, title: record.title };
   }
   return { found: false, reason: "Response was not a PDF" };
