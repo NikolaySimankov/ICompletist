@@ -79,3 +79,7 @@ Click the ⚙ button in the popup header. The only required field is **Email** (
 - It does **not** share or pool credentials between users.
 - It does **not** access any content you don't already have a personal right to read.
 - It does **not** scrape `files.core.ac.uk` URLs directly (per CORE's terms).
+
+## Acknowledgments
+
+- **Claude Code (Opus 4.8)** by [Anthropic](https://www.anthropic.com) — AI pair programming assistance for development of this project.
