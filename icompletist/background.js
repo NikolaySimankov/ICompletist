@@ -25,6 +25,8 @@ import { startRun, appendToRun, finishRun, replaceRunResults } from "./lib/histo
 import { isPdfBlob, describeBlob } from "./lib/pdfcheck.js";
 import { runSearch, buildQueries } from "./lib/search/orchestrate.js";
 import { selectArticles } from "./lib/search/select.js";
+import { crossrefLookup, mergeMeta, enrichItems } from "./lib/enrich.js";
+import { doiFromUrl } from "./lib/urlresolve.js";
 
 // Throttle: minimum gap between hits to the same publisher domain.
 //
@@ -48,6 +50,7 @@ const DOMAIN_DELAYS_MS = {
   "core": 200,          // CORE docs: ~10 req/s; 5 req/s leaves headroom
   "ncbi": 350,          // NCBI: 3 req/s without API key, 10 with one — safe for both
   "ieee": 500,          // IEEE has daily quotas, not strict per-second limits
+  "crossref": 100,      // Crossref polite pool is generous (~50 req/s); 10 req/s is plenty
 };
 const lastHit = new Map();
 
@@ -489,23 +492,74 @@ async function handleDoi(item, settings, subfolder, s2Cache) {
   return { doi, source: "unavailable", publisher, tryUrls };
 }
 
+// ENRICH (fetch-mode): fill bibliographic metadata via Crossref for any
+// result carrying a real DOI, so the RIS export for a Fetch-by-ID / URL run
+// is identical to a Search run. Runs per-item inside the worker pool and
+// shares the "crossref" throttle key across workers. Mutates result in place.
+async function enrichResult(result, settings) {
+  if (!result) return;
+  const raw = String(result.doi || "");
+  if (!/^10\.\d{4,9}\//i.test(raw)) return; // arXiv/OpenReview/unresolved — Crossref won't have it
+  if (result.title && result.year && result.journal && result.authors?.length) return; // already complete
+  try {
+    await throttle("crossref");
+    const meta = await crossrefLookup(raw, settings.email);
+    if (meta) mergeMeta(result, meta);
+  } catch (e) {
+    console.warn(`[${raw}] enrich error:`, e);
+  }
+}
+
 async function processItem(item, settings, subfolder, s2Cache) {
+  // URL items: resolve to a DOI first so the cache check, fetch cascade, and
+  // enrichment all operate on a real identifier — making a pasted URL behave
+  // exactly like a pasted DOI.
+  let workItem = item;
+  let sourceUrl = null;
+  if (item.type === "url") {
+    sourceUrl = item.value;
+    console.info(`[url] resolving DOI for ${item.value}`);
+    const doi = await doiFromUrl(item.value, { email: settings.email });
+    if (!doi) {
+      console.info(`[url] no DOI found on ${item.value}`);
+      return {
+        doi: item.value, source: "unavailable", sourceUrl,
+        error: "Could not find a DOI on that page",
+        tryUrls: [{ url: item.value, label: "Original URL" }],
+      };
+    }
+    console.info(`[url] ${item.value} → ${doi}`);
+    workItem = { type: "doi", value: doi, original: item.original };
+  }
+
   // Pre-check: if a PDF for this identifier already exists in the target
   // subfolder from an earlier run, skip the entire fetch cascade. We use
   // the same display ID that downloadBlob would have used so the regex
   // matches exactly.
-  const displayId = item.type === "arxiv" ? `arxiv:${item.value}`
-    : item.type === "openreview" ? `openreview:${item.value}`
-    : item.value;
+  const displayId = workItem.type === "arxiv" ? `arxiv:${workItem.value}`
+    : workItem.type === "openreview" ? `openreview:${workItem.value}`
+    : workItem.value;
+
+  let result;
   const existing = await checkAlreadyDownloaded(displayId, subfolder);
   if (existing) {
     console.info(`[${displayId}] already on disk, skipping (${existing})`);
-    return { doi: displayId, source: "cached", filename: existing };
+    result = { doi: displayId, source: "cached", filename: existing };
+  } else if (workItem.type === "arxiv") {
+    result = await handleArxiv(workItem, settings, subfolder);
+  } else if (workItem.type === "openreview") {
+    result = await handleOpenReview(workItem, settings, subfolder);
+  } else {
+    result = await handleDoi(workItem, settings, subfolder, s2Cache);
   }
 
-  if (item.type === "arxiv") return handleArxiv(item, settings, subfolder);
-  if (item.type === "openreview") return handleOpenReview(item, settings, subfolder);
-  return handleDoi(item, settings, subfolder, s2Cache);
+  // Carry the originating URL through for RIS / history.
+  if (sourceUrl && result && !result.sourceUrl) result.sourceUrl = sourceUrl;
+
+  // ENRICH every result (cached, downloaded, or unavailable) so RIS is
+  // complete regardless of download outcome.
+  await enrichResult(result, settings);
+  return result;
 }
 
 // ---- Worker pool ----
@@ -631,6 +685,9 @@ chrome.runtime.onConnect.addListener((port) => {
     if (msg.type !== "start") return;
 
     const { spec, sources, limit } = msg;
+    // ENSURE defaults to on; the popup sends ensure:false when the user
+    // unchecks the precision filter.
+    const ensureEnabled = msg.ensure !== false;
     const settings = await getSettings();
     const queries = buildQueries(spec);
     safePost({ type: "queries", queries });
@@ -673,21 +730,31 @@ chrome.runtime.onConnect.addListener((port) => {
       // SEARCH and DEDUPLICATE already happened inside runSearch. The two
       // stages below run automatically on every search.
 
-      // ENRICH: pass-through slot for v2.1. The cascade
-      //   Crossref → PubMed efetch → S2 single-record → Scopus Abstract API
-      // will fill missing abstracts / years / journals here without any
-      // changes to the orchestration. Items only ever flow null→value so
-      // the stage stays idempotent.
+      // ENRICH: fill missing title / authors / year / journal / volume /
+      // pages / abstract / keywords via Crossref so search-mode RIS is
+      // complete and identical to fetch-mode. Items only ever flow
+      // null→value (mergeMeta), so the stage is idempotent and never
+      // clobbers richer data a search source already supplied. This is
+      // also what lets ENSURE work on PubMed-only hits, which arrive with
+      // no abstract from esummary.
       safePost({ type: "stage", stage: "enrich", before: items.length, after: items.length });
-      const enriched = items;
+      const enriched = await enrichItems(items, {
+        email: settings.email,
+        onProgress: (p) => safePost({ type: "enrich-progress", done: p.done, total: p.total }),
+      });
 
-      // ENSURE: re-apply the original spec locally against title + abstract
-      // + journal. Drops items the databases ranked in but that don't
-      // actually contain the query terms. Same select_articles() machinery
-      // as the user-driven SELECT stage planned for v2.2 — the only
-      // difference is that ENSURE uses the original spec automatically.
-      const ensured = selectArticles(enriched, spec);
-      safePost({ type: "stage", stage: "ensure", before: enriched.length, after: ensured.length });
+      // ENSURE (optional): re-apply the original spec locally against title +
+      // abstract + journal, dropping items the databases ranked in but that
+      // don't actually contain the query terms. Skipped when the user
+      // unchecks the precision filter.
+      let ensured;
+      if (ensureEnabled) {
+        ensured = selectArticles(enriched, spec);
+        safePost({ type: "stage", stage: "ensure", before: enriched.length, after: ensured.length });
+      } else {
+        ensured = enriched;
+        safePost({ type: "stage", stage: "ensure", before: enriched.length, after: enriched.length, skipped: true });
+      }
 
       // Persist the post-ENSURE items as the run's results. We store the
       // rich metadata (title, year, journal, abstract if present) so the

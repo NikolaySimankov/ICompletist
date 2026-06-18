@@ -63,6 +63,25 @@ export function parseIdentifiers(text) {
     if (overlaps) continue;
     const doi = m[0].toLowerCase().replace(/[.,;]+$/, "");
     push("doi", doi, m[0]);
+    // Record the range so the URL pass below doesn't re-capture the
+    // publisher/doi.org URL that contained this DOI.
+    consumed.push([start, end]);
+  }
+
+  // Pass 4: bare article URLs that did NOT already yield a DOI/arXiv/
+  // OpenReview identifier. These need a network round-trip to discover their
+  // DOI (handled later by lib/urlresolve.js), so we tag them as type "url".
+  // A URL that embedded a recognizable DOI was consumed above and is skipped
+  // here — we already have the better identifier.
+  const urlRe = /\bhttps?:\/\/[^\s<>"')\]]+/gi;
+  let u;
+  while ((u = urlRe.exec(text)) !== null) {
+    const start = u.index;
+    const raw = u[0].replace(/[.,;)\]]+$/, "");
+    const end = start + raw.length;
+    const overlaps = consumed.some(([s, e]) => start < e && end > s);
+    if (overlaps) continue;
+    push("url", raw, raw);
   }
 
   return out;

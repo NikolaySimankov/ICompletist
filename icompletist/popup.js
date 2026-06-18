@@ -110,7 +110,8 @@ function readSearchInputs() {
   const doctype = [...document.querySelectorAll(".doctype-cb:checked")].map((el) => el.value);
   const sources = [...document.querySelectorAll(".source-cb:checked")].map((el) => el.value);
   const limit = parseInt(ui.limitInput?.value, 10) || 500;
-  return { queryText, yearFrom, yearTo, field, doctype, sources, limit };
+  const ensure = document.getElementById("ensure-cb")?.checked ?? true;
+  return { queryText, yearFrom, yearTo, field, doctype, sources, limit, ensure };
 }
 
 function showQueryError(msg) {
@@ -173,7 +174,7 @@ ui.searchBtn?.addEventListener("click", async () => {
   }
 
   const port = chrome.runtime.connect({ name: "search-job" });
-  port.postMessage({ type: "start", spec, sources: inputs.sources, limit: inputs.limit });
+  port.postMessage({ type: "start", spec, sources: inputs.sources, limit: inputs.limit, ensure: inputs.ensure });
 
   port.onMessage.addListener((msg) => {
     if (msg.type === "queries") {
@@ -203,11 +204,17 @@ ui.searchBtn?.addEventListener("click", async () => {
       }
     } else if (msg.type === "stage") {
       if (msg.stage === "enrich") {
-        ui.progressText.textContent = `Enriching ${msg.before} item${msg.before === 1 ? "" : "s"}…`;
+        ui.progressText.textContent = `Enriching metadata for ${msg.before} item${msg.before === 1 ? "" : "s"} (Crossref)…`;
       } else if (msg.stage === "ensure") {
-        const dropped = msg.before - msg.after;
-        ui.progressText.textContent = `ENSURE filter: ${msg.before} → ${msg.after} (dropped ${dropped}).`;
+        if (msg.skipped) {
+          ui.progressText.textContent = `ENSURE skipped — keeping all ${msg.after} results.`;
+        } else {
+          const dropped = msg.before - msg.after;
+          ui.progressText.textContent = `ENSURE filter: ${msg.before} → ${msg.after} (dropped ${dropped}).`;
+        }
       }
+    } else if (msg.type === "enrich-progress") {
+      if (msg.total) ui.progressText.textContent = `Enriching metadata… ${msg.done}/${msg.total} (Crossref)`;
     } else if (msg.type === "done") {
       let text;
       if (msg.cancelled) {

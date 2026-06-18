@@ -33,6 +33,10 @@ export async function appendToRun(runId, entry) {
   const { [KEY]: runs = [] } = await chrome.storage.local.get({ [KEY]: [] });
   const run = runs.find((r) => r.id === runId);
   if (!run) return;
+  // A "real" DOI (10.x/...) goes into the identifiers block so RIS export
+  // treats it identically to a search-mode result; arXiv/OpenReview display
+  // strings are left for risexport's prefix handling.
+  const realDoi = /^10\.\d{4,9}\//i.test(String(entry.doi || "")) ? entry.doi : null;
   run.results.push({
     doi: entry.doi,
     source: entry.source,
@@ -40,16 +44,28 @@ export async function appendToRun(runId, entry) {
     publisher: entry.publisher || null,
     error: entry.error || null,
     tryUrls: Array.isArray(entry.tryUrls) ? entry.tryUrls : null,
-    // Pull through any rich metadata returned by the fetch handlers:
-    // Unpaywall and CORE return titles; arXiv returns arxivId; Unpaywall
-    // returns license; handleDoi tags `via` with the source that succeeded.
-    // Without this, RIS export for fetch-mode runs loses everything but
-    // the DOI and the local filename.
+    // Full bibliographic record — populated by the ENRICH (Crossref) stage
+    // and by whatever the fetch handlers returned (Unpaywall/CORE titles,
+    // licenses, `via`). This is what makes fetch-mode RIS identical to
+    // search-mode RIS.
     title: entry.title || null,
+    authors: Array.isArray(entry.authors) ? entry.authors : [],
+    year: entry.year || null,
+    journal: entry.journal || null,
+    volume: entry.volume || null,
+    pages: entry.pages || null,
+    abstract: entry.abstract || null,
+    keywords: Array.isArray(entry.keywords) ? entry.keywords : null,
     via: entry.via || null,
     license: entry.license || null,
-    pmcid: entry.pmcid || null,
-    arxivId: entry.arxivId || null,
+    sourceUrl: entry.sourceUrl || null,
+    openAccessUrl: entry.openAccessUrl || null,
+    identifiers: {
+      doi: realDoi,
+      pmid: entry.pmid || null,
+      pmcid: entry.pmcid || null,
+      arxivId: entry.arxivId || null,
+    },
     at: Date.now(),
   });
   await chrome.storage.local.set({ [KEY]: runs });

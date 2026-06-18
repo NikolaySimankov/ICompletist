@@ -25,8 +25,8 @@
 
     <!-- FETCH BY ID PANEL -->
     <div id="id-panel">
-      <label for="dois" style="margin-top: 12px;">Paste identifiers (DOI, arXiv ID, or OpenReview ID — one per line)</label>
-      <textarea id="dois" rows="7" placeholder="10.1038/nature12373&#10;arXiv:2103.00020&#10;openreview.net/forum?id=...&#10;10.1101/2024.01.01.000000  (bioRxiv)&#10;10.1109/...  (IEEE)"></textarea>
+      <label for="dois" style="margin-top: 12px;">Paste identifiers or URLs (DOI, arXiv ID, OpenReview ID, or article URL — one per line)</label>
+      <textarea id="dois" rows="7" placeholder="10.1038/nature12373&#10;arXiv:2103.00020&#10;openreview.net/forum?id=...&#10;https://www.nature.com/articles/s41586-020-2649-2&#10;10.1109/...  (IEEE)"></textarea>
       <div class="row">
         <button id="fetch-btn" class="primary">Fetch articles</button>
         <button id="clear-btn">Clear</button>
@@ -83,6 +83,13 @@
         <div class="control-group">
           <label for="limit-input">Per-source limit</label>
           <input type="number" id="limit-input" value="500" min="10" max="10000" step="10">
+        </div>
+
+        <div class="control-group">
+          <label>Precision</label>
+          <div class="checkbox-row">
+            <label title="After search, drop results whose title/abstract/journal don't actually contain your query terms"><input type="checkbox" id="ensure-cb" checked> ENSURE — keep only results that match the query</label>
+          </div>
         </div>
       </div>
 
