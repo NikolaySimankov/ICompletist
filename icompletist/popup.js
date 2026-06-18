@@ -56,6 +56,34 @@ chrome.storage.local.get({ subfolder: "icompletist" }, ({ subfolder }) => {
   ui.subfolderField.value = subfolder;
 });
 
+// ---- Theme (light / dark / auto) ----
+// "auto" follows the OS (no data-theme attribute → the prefers-color-scheme
+// media query in popup.css decides). "light"/"dark" force the theme via a
+// data-theme attribute on <html>. Choice persists in chrome.storage.local
+// and is shared by popup + tab (both load this file).
+const THEME_ORDER = ["auto", "light", "dark"];
+const THEME_ICON = { auto: "◐", light: "☀", dark: "☾" };
+let _theme = "auto";
+function applyTheme(mode) {
+  const root = document.documentElement;
+  if (mode === "auto") root.removeAttribute("data-theme");
+  else root.setAttribute("data-theme", mode);
+  const btn = document.getElementById("theme-btn");
+  if (btn) {
+    btn.textContent = THEME_ICON[mode] || "◐";
+    btn.title = `Theme: ${mode} — click to change`;
+  }
+}
+chrome.storage.local.get({ theme: "auto" }, ({ theme }) => {
+  _theme = THEME_ORDER.includes(theme) ? theme : "auto";
+  applyTheme(_theme);
+});
+document.getElementById("theme-btn")?.addEventListener("click", () => {
+  _theme = THEME_ORDER[(THEME_ORDER.indexOf(_theme) + 1) % THEME_ORDER.length];
+  chrome.storage.local.set({ theme: _theme });
+  applyTheme(_theme);
+});
+
 // ---- Service-worker keepalive ----
 // Chrome MV3 service workers are killed after 5 minutes of no browser
 // events. A 2500-DOI batch takes far longer than that. We ping the service
