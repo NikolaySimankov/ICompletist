@@ -19,6 +19,8 @@ import { elsevierTdmFetch } from "./lib/elsevier.js";
 import { springerTdmFetch } from "./lib/springer.js";
 import { wileyTdmFetch } from "./lib/wiley.js";
 import { coreLookup } from "./lib/core.js";
+import { openalexLookup } from "./lib/openalex.js";
+import { citationPdfUrls } from "./lib/landingpdf.js";
 import { s2BatchLookup } from "./lib/semanticscholar.js";
 import { resolveOpenUrl, fetchWithSession } from "./lib/resolver.js";
 import { startRun, appendToRun, finishRun, replaceRunResults, getRuns } from "./lib/history.js";
@@ -51,6 +53,7 @@ const DOMAIN_DELAYS_MS = {
   "ncbi": 350,          // NCBI: 3 req/s without API key, 10 with one — safe for both
   "ieee": 500,          // IEEE has daily quotas, not strict per-second limits
   "crossref": 100,      // Crossref polite pool is generous (~50 req/s); 10 req/s is plenty
+  "openalex": 100,      // OpenAlex polite pool: ~10 req/s
 };
 const lastHit = new Map();
 
@@ -451,7 +454,28 @@ async function handleDoi(item, settings, subfolder, s2Cache) {
     console.info(`[${doi}] skipping Unpaywall (no email configured)`);
   }
 
-  // Step 5: PMC.
+  // Step 5: OpenAlex. Another OA aggregator — frequently has fresh PDF
+  // locations Unpaywall hasn't indexed yet. We try every PDF URL it reports
+  // (best first); landing pages are saved for the citation_pdf_url scrape and
+  // as manual-fallback links.
+  console.info(`[${doi}] trying OpenAlex`);
+  try {
+    await throttle("openalex");
+    const oa = await openalexLookup(doi, settings.email);
+    for (const u of oa.candidateUrls || []) {
+      const filename = await tryDirectPdf(u, doi, subfolder);
+      if (filename) {
+        return { doi, source: "oa", via: "openalex", title: oa.title, license: oa.license, filename };
+      }
+      recordUrl(u, "OpenAlex OA PDF");
+    }
+    for (const u of oa.landingUrls || []) recordUrl(u, "OpenAlex landing page");
+    if (!oa.found) console.info(`[${doi}] OpenAlex: no OA PDF`);
+  } catch (e) {
+    console.warn(`[${doi}] OpenAlex error:`, e);
+  }
+
+  // Step 6: PMC.
   console.info(`[${doi}] trying PMC`);
   try {
     await throttle("ncbi");
@@ -469,7 +493,41 @@ async function handleDoi(item, settings, subfolder, s2Cache) {
     console.warn(`[${doi}] PMC error:`, e);
   }
 
-  // Step 6: Institutional resolver.
+  // Step 7: Landing-page citation_pdf_url scrape (last OA resort).
+  // Many fully-OA publishers expose the PDF via <meta name="citation_pdf_url">
+  // on the article page even when none of the aggregators above hold it. We
+  // scrape the DOI resolver landing page plus a few landing pages we already
+  // collected (skipping anything that's already a .pdf link).
+  try {
+    const landingCandidates = [
+      `https://doi.org/${doi}`,
+      ...tryUrls.map((u) => u.url).filter((u) => !/\.pdf(\?|$)/i.test(u)),
+    ];
+    const tried = new Set();
+    let scraped = 0;
+    for (const landing of landingCandidates) {
+      if (tried.has(landing) || scraped >= 3) continue; // bound the work
+      tried.add(landing);
+      scraped++;
+      console.info(`[${doi}] scraping citation_pdf_url from ${landing}`);
+      await throttle(publisher);
+      const pdfUrls = await citationPdfUrls(landing, { email: settings.email });
+      let recordedAny = false;
+      for (const p of pdfUrls) {
+        const filename = await tryDirectPdf(p, doi, subfolder);
+        if (filename) {
+          return { doi, source: "oa", via: "citation_pdf_url", filename };
+        }
+        recordUrl(p, "Article PDF (citation_pdf_url)");
+        recordedAny = true;
+      }
+      if (recordedAny) break; // found the tag but couldn't download — stop scraping
+    }
+  } catch (e) {
+    console.warn(`[${doi}] citation_pdf_url scrape error:`, e);
+  }
+
+  // Step 8: Institutional resolver.
   if (settings.resolverBase) {
     console.info(`[${doi}] trying institutional resolver`);
     await throttle(publisher);
