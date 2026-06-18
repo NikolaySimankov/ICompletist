@@ -11,7 +11,7 @@
 
 import { unpaywallLookup } from "./lib/unpaywall.js";
 import { pmcLookup } from "./lib/pmc.js";
-import { arxivFetch } from "./lib/arxiv.js";
+import { arxivFetch, arxivIdFromDoi } from "./lib/arxiv.js";
 import { biorxivFetch, isBiorxivDoi } from "./lib/biorxiv.js";
 import { openreviewFetch } from "./lib/openreview.js";
 import { ieeeOaFetch, isIeeeDoi } from "./lib/ieee.js";
@@ -157,8 +157,44 @@ async function handleDoi(item, settings, subfolder, s2Cache) {
   const doi = item.value;
   const publisher = publisherFromDoi(doi);
 
-  // Step 0: Semantic Scholar cache shortcut. If S2 already told us where the
-  // OA copy lives, fetch it directly with no further metadata round trips.
+  // ----- Early routing for DOIs that have a definitive native source.
+  // S2/CORE often return PMC stubs or DOI-resolver URLs for these, so we
+  // bypass them and go straight to the source that actually has the PDF.
+
+  // arXiv DOI form (10.48550/arXiv.X) → arXiv direct.
+  const arxivId = arxivIdFromDoi(doi);
+  if (arxivId) {
+    try {
+      const r = await arxivFetch(arxivId);
+      if (r.found) {
+        const filename = await downloadBlob(r.blob, doi, subfolder);
+        return { doi, source: "oa", via: "arxiv", arxivId: r.arxivId, filename };
+      }
+    } catch (e) {
+      console.warn("arXiv error for", doi, e);
+    }
+  }
+
+  // bioRxiv / medRxiv (10.1101/...) → bioRxiv API direct.
+  if (isBiorxivDoi(doi)) {
+    try {
+      const r = await biorxivFetch(doi);
+      if (r.found) {
+        const filename = await downloadBlob(r.blob, doi, subfolder);
+        return { doi, source: "oa", via: r.server, publisher: r.server, filename };
+      }
+    } catch (e) {
+      console.warn("bioRxiv error for", doi, e);
+    }
+    // For 10.1101 DOIs we DON'T fall through to S2/CORE/etc because they'll
+    // typically return a PMC preprint stub (HTML). If bioRxiv itself doesn't
+    // have it, the paper has probably been published elsewhere — let the
+    // generic pipeline below handle that case.
+  }
+
+  // ----- Generic pipeline -----
+
+  // Step 1: Semantic Scholar cache shortcut.
   if (s2Cache && s2Cache.has(doi)) {
     const hit = s2Cache.get(doi);
     if (hit && hit.url) {
@@ -166,10 +202,13 @@ async function handleDoi(item, settings, subfolder, s2Cache) {
       if (filename) {
         return { doi, source: "oa", via: "semanticscholar", license: hit.license, filename };
       }
+      // S2 gave a URL but it wasn't a usable PDF — invalidate the cache
+      // entry so later steps (Unpaywall in particular) don't get suppressed.
+      s2Cache.set(doi, undefined);
     }
   }
 
-  // Step 1: CORE — aggregator of ~200M+ OA papers from repositories worldwide.
+  // Step 2: CORE — aggregator of ~200M+ OA papers from repositories.
   if (settings.coreApiKey) {
     try {
       await throttle("core");
@@ -183,8 +222,7 @@ async function handleDoi(item, settings, subfolder, s2Cache) {
     }
   }
 
-  // Step 2: Publisher TDM APIs — clean publisher PDFs when your institution
-  // has a TDM agreement. Only fires for matching publisher prefixes.
+  // Step 3: Publisher TDM APIs.
   if (publisher === "elsevier" && settings.elsevierKey) {
     await throttle("elsevier-tdm");
     const r = await elsevierTdmFetch(doi, {
@@ -215,20 +253,27 @@ async function handleDoi(item, settings, subfolder, s2Cache) {
     }
   }
 
-  // Step 3: bioRxiv / medRxiv — fully OA, no key needed.
-  if (isBiorxivDoi(doi)) {
+  // Step 4: Unpaywall.
+  if (settings.email && s2Cache?.get(doi) !== null) {
     try {
-      const r = await biorxivFetch(doi);
-      if (r.found) {
-        const filename = await downloadBlob(r.blob, doi, subfolder);
-        return { doi, source: "oa", publisher: r.server, filename };
+      const up = await unpaywallLookup(doi, settings.email);
+      if (up.found) {
+        const pdfRes = await fetch(up.pdfUrl);
+        if (pdfRes.ok) {
+          const blob = await pdfRes.blob();
+          if (await isPdfBlob(blob)) {
+            const filename = await downloadBlob(blob, doi, subfolder);
+            return { doi, source: "oa", via: "unpaywall", title: up.title, license: up.license, filename };
+          }
+          console.warn("Unpaywall returned non-PDF for", doi, await describeBlob(blob));
+        }
       }
     } catch (e) {
-      console.warn("bioRxiv error for", doi, e);
+      console.warn("Unpaywall error for", doi, e);
     }
   }
 
-  // Step 4: PMC.
+  // Step 5: PMC. (bioRxiv DOIs already handled above and won't reach here.)
   try {
     await throttle("ncbi");
     const pmc = await pmcLookup(doi, { email: settings.email, apiKey: settings.ncbiApiKey });
@@ -240,26 +285,6 @@ async function handleDoi(item, settings, subfolder, s2Cache) {
     console.warn("PMC error for", doi, e);
   }
 
-  // Step 5: Unpaywall. Skip if S2 already told us this is closed-access.
-  if (settings.email && !(s2Cache?.get(doi) === null)) {
-    try {
-      const up = await unpaywallLookup(doi, settings.email);
-      if (up.found) {
-        const pdfRes = await fetch(up.pdfUrl);
-        if (pdfRes.ok) {
-          const blob = await pdfRes.blob();
-          if (await isPdfBlob(blob)) {
-            const filename = await downloadBlob(blob, doi, subfolder);
-            return { doi, source: "oa", title: up.title, license: up.license, filename };
-          }
-          console.warn("Unpaywall returned non-PDF for", doi, await describeBlob(blob));
-        }
-      }
-    } catch (e) {
-      console.warn("Unpaywall error for", doi, e);
-    }
-  }
-
   // Step 6: IEEE OA.
   if (isIeeeDoi(doi) && settings.ieeeKey) {
     try {
@@ -267,7 +292,7 @@ async function handleDoi(item, settings, subfolder, s2Cache) {
       const r = await ieeeOaFetch(doi, { apiKey: settings.ieeeKey });
       if (r.found) {
         const filename = await downloadBlob(r.blob, doi, subfolder);
-        return { doi, source: "oa", publisher: "ieee", filename };
+        return { doi, source: "oa", via: "ieee", publisher: "ieee", filename };
       }
     } catch (e) {
       console.warn("IEEE error for", doi, e);
