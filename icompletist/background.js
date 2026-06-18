@@ -156,40 +156,36 @@ async function handleOpenReview(item, settings, subfolder) {
 async function handleDoi(item, settings, subfolder, s2Cache) {
   const doi = item.value;
   const publisher = publisherFromDoi(doi);
+  console.info(`[${doi}] handleDoi start, publisher=${publisher}, biorxiv=${isBiorxivDoi(doi)}, arxiv=${!!arxivIdFromDoi(doi)}`);
 
   // ----- Early routing for DOIs that have a definitive native source.
-  // S2/CORE often return PMC stubs or DOI-resolver URLs for these, so we
-  // bypass them and go straight to the source that actually has the PDF.
-
-  // arXiv DOI form (10.48550/arXiv.X) → arXiv direct.
   const arxivId = arxivIdFromDoi(doi);
   if (arxivId) {
+    console.info(`[${doi}] trying arXiv direct (${arxivId})`);
     try {
       const r = await arxivFetch(arxivId);
       if (r.found) {
         const filename = await downloadBlob(r.blob, doi, subfolder);
         return { doi, source: "oa", via: "arxiv", arxivId: r.arxivId, filename };
       }
+      console.info(`[${doi}] arXiv miss:`, r.reason);
     } catch (e) {
-      console.warn("arXiv error for", doi, e);
+      console.warn(`[${doi}] arXiv error:`, e);
     }
   }
 
-  // bioRxiv / medRxiv (10.1101/...) → bioRxiv API direct.
   if (isBiorxivDoi(doi)) {
+    console.info(`[${doi}] trying bioRxiv direct`);
     try {
       const r = await biorxivFetch(doi);
       if (r.found) {
         const filename = await downloadBlob(r.blob, doi, subfolder);
         return { doi, source: "oa", via: r.server, publisher: r.server, filename };
       }
+      console.info(`[${doi}] bioRxiv miss:`, r.reason, r.status ? `(status ${r.status})` : "");
     } catch (e) {
-      console.warn("bioRxiv error for", doi, e);
+      console.warn(`[${doi}] bioRxiv error:`, e);
     }
-    // For 10.1101 DOIs we DON'T fall through to S2/CORE/etc because they'll
-    // typically return a PMC preprint stub (HTML). If bioRxiv itself doesn't
-    // have it, the paper has probably been published elsewhere — let the
-    // generic pipeline below handle that case.
   }
 
   // ----- Generic pipeline -----
@@ -198,18 +194,23 @@ async function handleDoi(item, settings, subfolder, s2Cache) {
   if (s2Cache && s2Cache.has(doi)) {
     const hit = s2Cache.get(doi);
     if (hit && hit.url) {
+      console.info(`[${doi}] trying S2 cached URL: ${hit.url}`);
       const filename = await tryDirectPdf(hit.url, doi, subfolder);
       if (filename) {
         return { doi, source: "oa", via: "semanticscholar", license: hit.license, filename };
       }
-      // S2 gave a URL but it wasn't a usable PDF — invalidate the cache
-      // entry so later steps (Unpaywall in particular) don't get suppressed.
+      console.info(`[${doi}] S2 URL was not a valid PDF, invalidating cache`);
       s2Cache.set(doi, undefined);
+    } else {
+      console.info(`[${doi}] S2 has no OA URL for this DOI`);
     }
+  } else {
+    console.info(`[${doi}] not in S2 cache`);
   }
 
-  // Step 2: CORE — aggregator of ~200M+ OA papers from repositories.
+  // Step 2: CORE.
   if (settings.coreApiKey) {
+    console.info(`[${doi}] trying CORE`);
     try {
       await throttle("core");
       const r = await coreLookup(doi, { apiKey: settings.coreApiKey });
@@ -217,13 +218,17 @@ async function handleDoi(item, settings, subfolder, s2Cache) {
         const filename = await downloadBlob(r.blob, doi, subfolder);
         return { doi, source: "oa", via: "core", title: r.title, filename };
       }
+      console.info(`[${doi}] CORE miss:`, r.reason);
     } catch (e) {
-      console.warn("CORE error for", doi, e);
+      console.warn(`[${doi}] CORE error:`, e);
     }
+  } else {
+    console.info(`[${doi}] skipping CORE (no key)`);
   }
 
   // Step 3: Publisher TDM APIs.
   if (publisher === "elsevier" && settings.elsevierKey) {
+    console.info(`[${doi}] trying Elsevier TDM`);
     await throttle("elsevier-tdm");
     const r = await elsevierTdmFetch(doi, {
       apiKey: settings.elsevierKey,
@@ -233,28 +238,32 @@ async function handleDoi(item, settings, subfolder, s2Cache) {
       const filename = await downloadBlob(r.blob, doi, subfolder);
       return { doi, source: "tdm", publisher, filename };
     }
+    console.info(`[${doi}] Elsevier TDM miss:`, r.reason, r.status ? `(${r.status})` : "");
   }
   if (publisher === "springer" && settings.springerKey) {
+    console.info(`[${doi}] trying Springer TDM`);
     await throttle("springer-tdm");
     const r = await springerTdmFetch(doi, { apiKey: settings.springerKey });
     if (r.found) {
       const filename = await downloadBlob(r.blob, doi, subfolder);
       return { doi, source: "tdm", publisher, filename };
     }
+    console.info(`[${doi}] Springer TDM miss:`, r.reason);
   }
   if (publisher === "wiley" && settings.wileyToken) {
+    console.info(`[${doi}] trying Wiley TDM`);
     await throttle("wiley-tdm");
     const r = await wileyTdmFetch(doi, { token: settings.wileyToken });
     if (r.found) {
       const filename = await downloadBlob(r.blob, doi, subfolder);
       return { doi, source: "tdm", publisher, filename };
-    } else {
-      console.warn("Wiley TDM failed for", doi, "status:", r.status, r.reason);
     }
+    console.info(`[${doi}] Wiley TDM miss:`, r.reason, r.status ? `(${r.status})` : "");
   }
 
   // Step 4: Unpaywall.
   if (settings.email && s2Cache?.get(doi) !== null) {
+    console.info(`[${doi}] trying Unpaywall`);
     try {
       const up = await unpaywallLookup(doi, settings.email);
       if (up.found) {
@@ -265,15 +274,24 @@ async function handleDoi(item, settings, subfolder, s2Cache) {
             const filename = await downloadBlob(blob, doi, subfolder);
             return { doi, source: "oa", via: "unpaywall", title: up.title, license: up.license, filename };
           }
-          console.warn("Unpaywall returned non-PDF for", doi, await describeBlob(blob));
+          console.warn(`[${doi}] Unpaywall returned non-PDF:`, await describeBlob(blob));
+        } else {
+          console.info(`[${doi}] Unpaywall PDF fetch returned ${pdfRes.status}`);
         }
+      } else {
+        console.info(`[${doi}] Unpaywall: no OA copy`);
       }
     } catch (e) {
-      console.warn("Unpaywall error for", doi, e);
+      console.warn(`[${doi}] Unpaywall error:`, e);
     }
+  } else if (!settings.email) {
+    console.info(`[${doi}] skipping Unpaywall (no email configured)`);
+  } else {
+    console.info(`[${doi}] skipping Unpaywall (S2 marked as closed-access)`);
   }
 
-  // Step 5: PMC. (bioRxiv DOIs already handled above and won't reach here.)
+  // Step 5: PMC.
+  console.info(`[${doi}] trying PMC`);
   try {
     await throttle("ncbi");
     const pmc = await pmcLookup(doi, { email: settings.email, apiKey: settings.ncbiApiKey });
@@ -281,12 +299,14 @@ async function handleDoi(item, settings, subfolder, s2Cache) {
       const filename = await downloadBlob(pmc.blob, doi, subfolder);
       return { doi, source: "pmc", pmcid: pmc.pmcid, filename };
     }
+    console.info(`[${doi}] PMC miss:`, pmc.reason);
   } catch (e) {
-    console.warn("PMC error for", doi, e);
+    console.warn(`[${doi}] PMC error:`, e);
   }
 
   // Step 6: IEEE OA.
   if (isIeeeDoi(doi) && settings.ieeeKey) {
+    console.info(`[${doi}] trying IEEE OA`);
     try {
       await throttle("ieee");
       const r = await ieeeOaFetch(doi, { apiKey: settings.ieeeKey });
@@ -294,13 +314,15 @@ async function handleDoi(item, settings, subfolder, s2Cache) {
         const filename = await downloadBlob(r.blob, doi, subfolder);
         return { doi, source: "oa", via: "ieee", publisher: "ieee", filename };
       }
+      console.info(`[${doi}] IEEE miss:`, r.reason);
     } catch (e) {
-      console.warn("IEEE error for", doi, e);
+      console.warn(`[${doi}] IEEE error:`, e);
     }
   }
 
   // Step 7: Institutional resolver.
   if (settings.resolverBase) {
+    console.info(`[${doi}] trying institutional resolver`);
     await throttle(publisher);
     const r = await resolveOpenUrl(doi, settings.resolverBase);
     if (r.found && r.url) {
@@ -312,6 +334,7 @@ async function handleDoi(item, settings, subfolder, s2Cache) {
     }
   }
 
+  console.info(`[${doi}] all sources exhausted → unavailable`);
   return { doi, source: "unavailable", publisher };
 }
 

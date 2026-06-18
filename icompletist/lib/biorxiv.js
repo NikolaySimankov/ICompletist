@@ -21,19 +21,28 @@ export function isBiorxivDoi(doi) {
 
 async function tryServer(doi, server) {
   const url = `https://api.biorxiv.org/details/${server}/${encodeURIComponent(doi)}`;
-  const res = await fetch(url);
-  if (!res.ok) return null;
-  const data = await res.json();
-  if (!data.collection || !data.collection.length) return null;
-  // Latest version is last.
-  const latest = data.collection[data.collection.length - 1];
-  return { ...latest, server };
+  try {
+    const res = await fetch(url);
+    if (!res.ok) {
+      console.info(`bioRxiv API: ${server} returned ${res.status} for ${doi}`);
+      return null;
+    }
+    const data = await res.json();
+    if (!data.collection || !data.collection.length) {
+      console.info(`bioRxiv API: ${server} has no collection for ${doi}`);
+      return null;
+    }
+    const latest = data.collection[data.collection.length - 1];
+    return { ...latest, server };
+  } catch (e) {
+    console.warn(`bioRxiv API error for ${server}/${doi}:`, e);
+    return null;
+  }
 }
 
 export async function biorxivFetch(doi) {
   if (!isBiorxivDoi(doi)) return { found: false, reason: "Not a bioRxiv/medRxiv DOI" };
 
-  // Try bioRxiv first, fall back to medRxiv if not found there.
   let record = await tryServer(doi, "biorxiv");
   if (!record) record = await tryServer(doi, "medrxiv");
   if (!record) return { found: false, reason: "Not in bioRxiv or medRxiv" };
@@ -41,13 +50,19 @@ export async function biorxivFetch(doi) {
   const host = record.server === "medrxiv" ? "www.medrxiv.org" : "www.biorxiv.org";
   const version = record.version || 1;
   const pdfUrl = `https://${host}/content/${doi}v${version}.full.pdf`;
+  console.info(`bioRxiv: fetching ${pdfUrl}`);
 
-  const pdfRes = await fetch(pdfUrl, { redirect: "follow" });
-  if (!pdfRes.ok) return { found: false, status: pdfRes.status, reason: "PDF fetch failed" };
-
-  const blob = await pdfRes.blob();
-  if (await isPdfBlob(blob)) {
-    return { found: true, blob, server: record.server, version, title: record.title };
+  try {
+    const pdfRes = await fetch(pdfUrl, { redirect: "follow" });
+    if (!pdfRes.ok) {
+      return { found: false, status: pdfRes.status, reason: `PDF fetch returned ${pdfRes.status}` };
+    }
+    const blob = await pdfRes.blob();
+    if (await isPdfBlob(blob)) {
+      return { found: true, blob, server: record.server, version, title: record.title };
+    }
+    return { found: false, reason: `Response was not a PDF (type=${blob.type}, size=${blob.size})` };
+  } catch (e) {
+    return { found: false, reason: `PDF fetch error: ${e.message}` };
   }
-  return { found: false, reason: "Response was not a PDF" };
 }
