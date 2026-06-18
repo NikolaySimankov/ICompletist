@@ -566,6 +566,7 @@ chrome.runtime.onConnect.addListener((port) => {
           s2Id: it.s2Id || null,
           coreId: it.coreId || null,
           scopusId: it.scopusId || null,
+          ieeeArticleNumber: it.ieeeArticleNumber || null,
         },
         openAccessUrl: it.openAccessUrl || null,
         sourceUrl: it.sourceUrl || null,

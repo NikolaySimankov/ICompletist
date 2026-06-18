@@ -62,6 +62,7 @@ export async function search(query, { apiKey, limit = 1000, onProgress } = {}) {
 
   const items = [];
   let total = 0;
+  let lastError = null;
 
   for (let start = 0; start < limit; start += BATCH_SIZE) {
     const params = new URLSearchParams({
@@ -77,21 +78,51 @@ export async function search(query, { apiKey, limit = 1000, onProgress } = {}) {
     try {
       res = await fetch(url);
     } catch (e) {
+      lastError = `network error: ${e.message}`;
       console.warn("Scopus search network error:", e);
       break;
     }
+
     if (!res.ok) {
-      console.warn("Scopus search returned", res.status);
+      // Read the error body to give the user a useful message.
+      let body = "";
+      try { body = await res.text(); } catch {}
+      // Scopus rate-limit headers: X-RateLimit-Remaining, X-RateLimit-Reset
+      const remaining = res.headers.get("X-RateLimit-Remaining");
+      const reset = res.headers.get("X-RateLimit-Reset");
+      lastError = `Scopus returned ${res.status}${remaining ? ` (${remaining} req remaining)` : ""}: ${body.slice(0, 200)}`;
+      console.warn(lastError);
+
+      // 429 = explicit rate-limit; back off and retry once.
+      if (res.status === 429) {
+        const waitMs = reset ? Math.max(0, (parseInt(reset, 10) * 1000) - Date.now()) : 8000;
+        console.info(`Scopus 429, waiting ${Math.min(waitMs, 30000)}ms before retry`);
+        await new Promise((r) => setTimeout(r, Math.min(waitMs, 30000)));
+        start -= BATCH_SIZE; // Retry this batch.
+        continue;
+      }
+
+      // 401/403 = key invalid or quota exhausted — stop entirely.
+      if (res.status === 401 || res.status === 403) {
+        throw new Error(`Scopus auth/quota error (${res.status}): your key may be invalid or you've hit your weekly download quota.`);
+      }
       break;
     }
 
-    const data = await res.json();
+    let data;
+    try { data = await res.json(); } catch (e) { lastError = `bad JSON: ${e.message}`; break; }
+
     const results = data["search-results"] || {};
     total = parseInt(results["opensearch:totalResults"], 10) || 0;
     const entries = results.entry || [];
 
-    // Scopus returns a single error-keyed entry on no results.
-    if (!entries.length || entries[0].error) break;
+    // Scopus returns a single error-keyed entry on no results or service errors.
+    if (!entries.length) break;
+    if (entries[0].error) {
+      // Empty page after some results is "end of results", not a hard error.
+      if (items.length > 0) break;
+      throw new Error(`Scopus: ${entries[0].error}`);
+    }
 
     for (const e of entries) {
       const raw = e["prism:coverDate"] || "";
@@ -105,7 +136,6 @@ export async function search(query, { apiKey, limit = 1000, onProgress } = {}) {
         pmid: e["pubmed-id"] || null,
         doi: e["prism:doi"] ? e["prism:doi"].toLowerCase() : null,
         title: e["dc:title"] || null,
-        // Scopus search rarely includes an abstract; leave it to the enrich stage.
         year,
         journal: e["prism:publicationName"] || null,
         volume: e["prism:volume"] || null,
@@ -120,9 +150,13 @@ export async function search(query, { apiKey, limit = 1000, onProgress } = {}) {
     if (onProgress) onProgress({ done: items.length, total });
 
     if (items.length >= Math.min(total, limit)) break;
-    // Light pacing.
-    await new Promise((r) => setTimeout(r, 150));
+    // Scopus documents ~9 req/sec ceiling on the search endpoint; we use 250ms
+    // (~4 req/sec) to leave plenty of headroom.
+    await new Promise((r) => setTimeout(r, 250));
   }
 
+  if (!items.length && lastError) {
+    throw new Error(lastError);
+  }
   return { items, total, source: "scopus" };
 }

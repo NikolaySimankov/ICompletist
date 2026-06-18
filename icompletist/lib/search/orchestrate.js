@@ -8,14 +8,16 @@ import * as pubmed from "./pubmed.js";
 import * as scopus from "./scopus.js";
 import * as s2 from "./s2.js";
 import * as core from "./core.js";
+import * as ieee from "./ieee.js";
 
-export const ALL_SOURCES = ["pubmed", "scopus", "semanticscholar", "core"];
+export const ALL_SOURCES = ["pubmed", "scopus", "semanticscholar", "core", "ieee"];
 
 const SOURCE_MOD = {
   pubmed,
   scopus,
   semanticscholar: s2,
   core,
+  ieee,
 };
 
 // Produce a canonical identity key for an item, used for dedup.
@@ -27,8 +29,8 @@ function identityKey(item) {
   if (item.s2Id) return `s2:${item.s2Id}`;
   if (item.coreId) return `core:${item.coreId}`;
   if (item.scopusId) return `scopus:${item.scopusId}`;
+  if (item.ieeeArticleNumber) return `ieee:${item.ieeeArticleNumber}`;
   if (item.title) {
-    // Normalize title: lowercase, strip non-alphanumeric, collapse whitespace.
     const norm = item.title.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
     if (norm.length > 30) return `title:${norm}`;
   }
@@ -39,18 +41,16 @@ function identityKey(item) {
 // recording the source.
 function mergeInto(target, incoming) {
   const fields = [
-    "doi", "pmid", "pmcid", "arxivId", "scopusId", "eid", "s2Id", "coreId",
+    "doi", "pmid", "pmcid", "arxivId", "scopusId", "eid", "s2Id", "coreId", "ieeeArticleNumber",
     "title", "abstract", "year", "journal", "volume", "pages", "citedBy",
     "openAccess", "openAccessUrl", "articleType", "sourceUrl",
   ];
   for (const f of fields) {
     if (target[f] == null && incoming[f] != null) target[f] = incoming[f];
   }
-  // Authors: take the longer non-empty list.
   if (Array.isArray(incoming.authors) && incoming.authors.length > (target.authors?.length || 0)) {
     target.authors = incoming.authors;
   }
-  // Record the source.
   if (!target.sources.includes(incoming.source)) target.sources.push(incoming.source);
 }
 
@@ -61,6 +61,7 @@ export function buildQueries(spec) {
     scopus: scopus.buildQuery(spec),
     semanticscholar: s2.buildQuery(spec),
     core: core.buildQuery(spec),
+    ieee: ieee.buildQuery(spec),
   };
 }
 
@@ -88,6 +89,7 @@ export async function runSearch(spec, opts = {}) {
     scopus: { apiKey: settings.elsevierKey, limit },
     semanticscholar: { apiKey: settings.s2ApiKey, limit, yearFrom: spec.yearFrom, yearTo: spec.yearTo, doctype: spec.doctype },
     core: { apiKey: settings.coreApiKey, limit },
+    ieee: { apiKey: settings.ieeeKey, limit, yearFrom: spec.yearFrom, yearTo: spec.yearTo, doctype: spec.doctype },
   };
 
   const perSource = {};
@@ -124,6 +126,7 @@ export async function runSearch(spec, opts = {}) {
           sources: [],
           doi: null, pmid: null, pmcid: null, arxivId: null,
           scopusId: null, eid: null, s2Id: null, coreId: null,
+          ieeeArticleNumber: null,
           title: null, abstract: null, year: null, journal: null,
           volume: null, pages: null, citedBy: null,
           openAccess: false, openAccessUrl: null,
