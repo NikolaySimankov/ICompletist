@@ -2,6 +2,8 @@
 import { parseIdentifiers } from "./lib/identifiers.js";
 import { buildRis } from "./lib/risexport.js";
 import { buildSpec, QueryParseError } from "./lib/search/spec.js";
+import { isPdfBlob } from "./lib/pdfcheck.js";
+import { updateRunResult } from "./lib/history.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -387,7 +389,7 @@ function runLabel(run) {
     return `[SEARCH] ${ts} · ${total} unique result${total === 1 ? "" : "s"}${status}`;
   }
   const summary = run.summary
-    ? ` · ${run.summary.pmc || 0}+${run.summary.oa || 0}+${run.summary.tdm || 0}+${run.summary.institutional || 0}+${run.summary.cached || 0} ok, ${run.summary.unavailable || 0} fail`
+    ? ` · ${run.summary.pmc || 0}+${run.summary.oa || 0}+${run.summary.tdm || 0}+${run.summary.institutional || 0}+${run.summary.cached || 0}+${run.summary.manual || 0} ok, ${run.summary.unavailable || 0} fail`
     : ` · ${run.results.length}/${run.total}`;
   return `${ts} · ${run.total} DOIs${summary}${status}`;
 }
@@ -447,12 +449,29 @@ function renderRunResults() {
     }).join("");
   } else {
     // Original rendering for fetch runs.
-    ui.runResults.innerHTML = run.results.map((e) => {
+    ui.runResults.innerHTML = run.results.map((e, idx) => {
       const tryUrlsHtml = Array.isArray(e.tryUrls) && e.tryUrls.length
         ? `<div class="try-urls">Try manually: ${e.tryUrls.map(
             (u) => `<a href="${u.url}" target="_blank" rel="noopener noreferrer" title="${u.label}">${u.label}</a>`
           ).join(" · ")}</div>`
         : "";
+      // Guided manual-attach panel for items with no PDF on disk yet.
+      const attachHtml = !e.filename ? `
+        <div class="attach-area">
+          <button class="attach-toggle" data-idx="${idx}">＋ Attach PDF manually</button>
+          <div class="attach-panel" data-idx="${idx}" hidden>
+            <div class="attach-hint">Open a link above to find the PDF, then:</div>
+            <label class="attach-file-btn">Choose downloaded PDF…
+              <input type="file" accept="application/pdf" class="attach-file-input" data-idx="${idx}" hidden>
+            </label>
+            <div class="attach-or">or paste a direct PDF URL</div>
+            <div class="attach-url-row">
+              <input type="url" class="attach-url-input" data-idx="${idx}" placeholder="https://…/article.pdf">
+              <button class="attach-url-go" data-idx="${idx}">Fetch</button>
+            </div>
+            <div class="attach-status" data-idx="${idx}"></div>
+          </div>
+        </div>` : "";
       return `
         <li data-doi="${e.doi}" title="${(e.filename || e.error || "Click to copy DOI to textarea").replace(/"/g, "&quot;")}">
           <div class="row-main">
@@ -460,6 +479,7 @@ function renderRunResults() {
             <span class="source ${sourceClassFor(e.source)}">${e.source}</span>
           </div>
           ${tryUrlsHtml}
+          ${attachHtml}
         </li>
       `;
     }).join("");
@@ -494,6 +514,8 @@ ui.runSelect.addEventListener("change", (e) => {
 
 // Click an individual result to add its DOI to the textarea.
 ui.runResults.addEventListener("click", (e) => {
+  // Clicks inside the manual-attach panel are handled separately.
+  if (e.target.closest(".attach-area")) return;
   const li = e.target.closest("li[data-doi]");
   if (!li) return;
   const doi = li.dataset.doi;
@@ -502,6 +524,97 @@ ui.runResults.addEventListener("click", (e) => {
   const existing = current.split(/[\s,;]+/).map((s) => s.toLowerCase());
   if (existing.includes(doi.toLowerCase())) return;
   ui.doisField.value = current ? `${current}\n${doi}` : doi;
+});
+
+// ---- Guided manual attach ----
+// Lets the user file a manually-obtained PDF (picked from disk, or fetched
+// from a direct URL) under ICompletist's naming convention into the run's
+// subfolder, flipping the result from "unavailable" to "manual".
+
+function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result);
+    r.onerror = () => reject(r.error);
+    r.readAsDataURL(blob);
+  });
+}
+
+// Reproduce background.downloadBlob's naming so a manual file lands exactly
+// where the automated path would have put it.
+function manualFilename(doi, subfolder) {
+  const safe = doi.replace(/[^a-z0-9]+/gi, "_");
+  const folder = (subfolder || "icompletist")
+    .replace(/^[/\\]+|[/\\]+$/g, "")
+    .replace(/[<>:"|?*\x00-\x1f]/g, "_");
+  return `${folder}/${safe}.pdf`;
+}
+
+function setAttachStatus(idx, msg, kind) {
+  const el = ui.runResults.querySelector(`.attach-status[data-idx="${idx}"]`);
+  if (!el) return;
+  el.className = `attach-status${kind ? ` ${kind}` : ""}`;
+  el.textContent = msg;
+}
+
+async function attachFile(idx, file) {
+  const run = runsCache.find((r) => r.id === selectedRunId);
+  const e = run?.results?.[idx];
+  if (!run || !e) return;
+  if (!(await isPdfBlob(file))) { setAttachStatus(idx, "That file isn't a PDF.", "err"); return; }
+  setAttachStatus(idx, "Saving…");
+  const subfolder = run.subfolder || ui.subfolderField.value || "icompletist";
+  try {
+    const dataUrl = await blobToDataUrl(file);
+    await chrome.downloads.download({
+      url: dataUrl,
+      filename: manualFilename(e.doi, subfolder),
+      saveAs: false,
+      conflictAction: "uniquify",
+    });
+    await updateRunResult(run.id, e.doi, {
+      source: "manual", filename: manualFilename(e.doi, subfolder), via: "manual-file", error: null, tryUrls: null,
+    });
+    setAttachStatus(idx, "Saved ✓", "ok");
+    // storage.onChanged re-renders the run.
+  } catch (err) {
+    setAttachStatus(idx, err.message || "Save failed", "err");
+  }
+}
+
+function attachUrl(idx) {
+  const run = runsCache.find((r) => r.id === selectedRunId);
+  const e = run?.results?.[idx];
+  if (!run || !e) return;
+  const input = ui.runResults.querySelector(`.attach-url-input[data-idx="${idx}"]`);
+  const url = (input?.value || "").trim();
+  if (!url) { setAttachStatus(idx, "Enter a URL.", "err"); return; }
+  setAttachStatus(idx, "Fetching…");
+  const subfolder = run.subfolder || ui.subfolderField.value || "icompletist";
+  chrome.runtime.sendMessage(
+    { type: "manual-url", runId: run.id, doi: e.doi, subfolder, url },
+    (resp) => {
+      if (chrome.runtime.lastError) { setAttachStatus(idx, chrome.runtime.lastError.message, "err"); return; }
+      if (resp?.ok) setAttachStatus(idx, "Saved ✓", "ok");
+      else setAttachStatus(idx, resp?.error || "Failed", "err");
+    }
+  );
+}
+
+ui.runResults.addEventListener("click", (e) => {
+  const toggle = e.target.closest(".attach-toggle");
+  if (toggle) {
+    const panel = toggle.parentElement.querySelector(".attach-panel");
+    if (panel) panel.hidden = !panel.hidden;
+    return;
+  }
+  const go = e.target.closest(".attach-url-go");
+  if (go) attachUrl(parseInt(go.dataset.idx, 10));
+});
+
+ui.runResults.addEventListener("change", (e) => {
+  const fi = e.target.closest(".attach-file-input");
+  if (fi && fi.files && fi.files[0]) attachFile(parseInt(fi.dataset.idx, 10), fi.files[0]);
 });
 
 ui.refillBtn.addEventListener("click", () => {

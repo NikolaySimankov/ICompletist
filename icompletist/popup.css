@@ -232,7 +232,69 @@ button.primary:hover { background: var(--accent); border-color: var(--accent); }
 .source.inst { color: var(--inst); }
 .source.tdm { color: var(--tdm); }
 .source.cached { color: var(--cached); }
+.source.manual { color: var(--accent); }
 .source.fail { color: var(--fail); }
+
+/* ---- Guided manual attach ---- */
+.attach-area { margin-top: 6px; }
+.attach-toggle {
+  background: transparent;
+  border: 1px dashed var(--line);
+  color: var(--muted);
+  font-size: 10.5px;
+  padding: 3px 8px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-family: inherit;
+}
+.attach-toggle:hover { border-color: var(--accent); color: var(--accent); }
+.attach-panel {
+  margin-top: 6px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: var(--hover-bg);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.attach-hint { font-size: 10.5px; color: var(--muted); }
+.attach-file-btn {
+  display: inline-block;
+  font-size: 11px;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: var(--field-bg);
+  color: var(--ink);
+  cursor: pointer;
+  text-transform: none;
+  letter-spacing: normal;
+  margin: 0;
+  align-self: flex-start;
+}
+.attach-file-btn:hover { border-color: var(--ink); }
+.attach-or {
+  font-size: 9.5px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.attach-url-row { display: flex; gap: 6px; }
+.attach-url-input { flex: 1; padding: 5px 8px; font-size: 11px; }
+.attach-url-go {
+  font-size: 11px;
+  padding: 4px 12px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: var(--field-bg);
+  color: var(--ink);
+  cursor: pointer;
+}
+.attach-url-go:hover { border-color: var(--ink); }
+.attach-status { font-size: 10.5px; color: var(--muted); min-height: 1em; }
+.attach-status.ok { color: var(--oa); }
+.attach-status.err { color: var(--fail); }
 
 #history-section {
   margin-top: 18px;

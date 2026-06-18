@@ -90,6 +90,26 @@ export async function replaceRunResults(runId, results) {
   await chrome.storage.local.set({ [KEY]: runs });
 }
 
+// Patch a single result in a run (used by the guided manual-attach flow:
+// turn an "unavailable" item into a "manual" one once the user supplies the
+// PDF). Matches by doi, merges `patch`, and recomputes the fetch-run summary
+// so the stats / history label stay accurate.
+export async function updateRunResult(runId, doi, patch) {
+  const { [KEY]: runs = [] } = await chrome.storage.local.get({ [KEY]: [] });
+  const run = runs.find((r) => r.id === runId);
+  if (!run) return false;
+  const res = run.results.find((r) => r.doi === doi);
+  if (!res) return false;
+  Object.assign(res, patch);
+  if (run.kind !== "search") {
+    const summary = {};
+    for (const r of run.results) summary[r.source] = (summary[r.source] || 0) + 1;
+    run.summary = summary;
+  }
+  await chrome.storage.local.set({ [KEY]: runs });
+  return true;
+}
+
 export async function finishRun(runId, summary) {
   const { [KEY]: runs = [] } = await chrome.storage.local.get({ [KEY]: [] });
   const run = runs.find((r) => r.id === runId);

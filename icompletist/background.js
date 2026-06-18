@@ -23,7 +23,7 @@ import { openalexLookup } from "./lib/openalex.js";
 import { citationPdfUrls } from "./lib/landingpdf.js";
 import { s2BatchLookup } from "./lib/semanticscholar.js";
 import { resolveOpenUrl, fetchWithSession } from "./lib/resolver.js";
-import { startRun, appendToRun, finishRun, replaceRunResults, getRuns } from "./lib/history.js";
+import { startRun, appendToRun, finishRun, replaceRunResults, getRuns, updateRunResult } from "./lib/history.js";
 import { isPdfBlob, describeBlob } from "./lib/pdfcheck.js";
 import { runSearch, buildQueries } from "./lib/search/orchestrate.js";
 import { selectArticles } from "./lib/search/select.js";
@@ -653,8 +653,34 @@ async function runPool(items, settings, subfolder, s2Cache, onResult, isCancelle
 // Keepalive: the popup/tab sends a no-op ping every 25 s while a job is
 // running. Receiving any message resets Chrome's 5-minute service-worker
 // idle timer, preventing the worker from being killed mid-batch.
-chrome.runtime.onMessage.addListener((msg) => {
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === "keepalive") return; // receipt alone resets the timer
+
+  // Guided manual attach — by URL. The user found a direct PDF link the
+  // automated cascade couldn't fetch; we download it under ICompletist's
+  // naming convention into the run's subfolder and flip the result to
+  // "manual" so it joins the run table + RIS export.
+  if (msg.type === "manual-url") {
+    (async () => {
+      try {
+        const res = await fetch(msg.url, { redirect: "follow" });
+        if (!res.ok) { sendResponse({ ok: false, error: `HTTP ${res.status}` }); return; }
+        const blob = await res.blob();
+        if (!(await isPdfBlob(blob))) {
+          sendResponse({ ok: false, error: `Not a PDF (${await describeBlob(blob)})` });
+          return;
+        }
+        const filename = await downloadBlob(blob, msg.doi, msg.subfolder);
+        await updateRunResult(msg.runId, msg.doi, {
+          source: "manual", filename, via: "manual-url", error: null, tryUrls: null,
+        });
+        sendResponse({ ok: true, filename });
+      } catch (e) {
+        sendResponse({ ok: false, error: e.message });
+      }
+    })();
+    return true; // keep the message channel open for the async response
+  }
 });
 
 // Long-lived connection from popup → process job.
