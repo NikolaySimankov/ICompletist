@@ -296,8 +296,9 @@ async function handleDoi(item, settings, subfolder, s2Cache) {
     console.info(`[${doi}] Wiley TDM miss:`, r.reason, r.status ? `(${r.status})` : "");
   }
 
-  // Step 4: Unpaywall.
-  if (settings.email && s2Cache?.get(doi) !== null) {
+  // Step 4: Unpaywall. Always try — S2 and Unpaywall sometimes disagree about
+  // OA status, and we want every chance at a legal PDF.
+  if (settings.email) {
     console.info(`[${doi}] trying Unpaywall`);
     try {
       const up = await unpaywallLookup(doi, settings.email);
@@ -316,17 +317,14 @@ async function handleDoi(item, settings, subfolder, s2Cache) {
       } else {
         console.info(`[${doi}] Unpaywall: no OA copy`);
       }
-      // Record every OA location Unpaywall knew about, whether we tried to fetch it or not.
       if (Array.isArray(up.candidateUrls)) {
         for (const u of up.candidateUrls) recordUrl(u, "Unpaywall OA location");
       }
     } catch (e) {
       console.warn(`[${doi}] Unpaywall error:`, e);
     }
-  } else if (!settings.email) {
-    console.info(`[${doi}] skipping Unpaywall (no email configured)`);
   } else {
-    console.info(`[${doi}] skipping Unpaywall (S2 marked as closed-access)`);
+    console.info(`[${doi}] skipping Unpaywall (no email configured)`);
   }
 
   // Step 5: PMC.
