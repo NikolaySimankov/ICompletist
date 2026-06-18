@@ -13,10 +13,24 @@ export async function unpaywallLookup(doi, email) {
   }
   const data = await res.json();
   const best = data.best_oa_location;
-  if (!best || !best.url_for_pdf) return { found: false, meta: data };
+  // Collect every OA location URL we got, deduplicated, in priority order:
+  // best_oa_location first, then all oa_locations, then landing pages.
+  const allLocations = Array.isArray(data.oa_locations) ? data.oa_locations : [];
+  const candidateUrls = [];
+  const seen = new Set();
+  const push = (u) => { if (u && !seen.has(u)) { seen.add(u); candidateUrls.push(u); } };
+  if (best?.url_for_pdf) push(best.url_for_pdf);
+  for (const loc of allLocations) push(loc.url_for_pdf);
+  if (best?.url) push(best.url);
+  for (const loc of allLocations) push(loc.url);
+
+  if (!best || !best.url_for_pdf) {
+    return { found: false, candidateUrls, title: data.title, meta: data };
+  }
   return {
     found: true,
     pdfUrl: best.url_for_pdf,
+    candidateUrls,
     license: best.license,
     hostType: best.host_type, // 'publisher' or 'repository'
     title: data.title,

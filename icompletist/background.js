@@ -131,10 +131,19 @@ async function handleArxiv(item, settings, subfolder) {
       const filename = await downloadBlob(r.blob, display, subfolder);
       return { doi: display, source: "oa", arxivId: r.arxivId, filename };
     }
-    return { doi: display, source: "unavailable", error: r.reason };
+    return {
+      doi: display, source: "unavailable", error: r.reason,
+      tryUrls: [
+        { url: `https://arxiv.org/abs/${item.value}`, label: "arXiv abstract" },
+        { url: `https://arxiv.org/pdf/${item.value}`, label: "arXiv PDF (direct)" },
+      ],
+    };
   } catch (e) {
     console.warn("arXiv error for", display, e);
-    return { doi: display, source: "unavailable", error: e.message };
+    return {
+      doi: display, source: "unavailable", error: e.message,
+      tryUrls: [{ url: `https://arxiv.org/abs/${item.value}`, label: "arXiv abstract" }],
+    };
   }
 }
 
@@ -146,10 +155,19 @@ async function handleOpenReview(item, settings, subfolder) {
       const filename = await downloadBlob(r.blob, display, subfolder);
       return { doi: display, source: "oa", openreviewId: item.value, filename };
     }
-    return { doi: display, source: "unavailable", error: r.reason };
+    return {
+      doi: display, source: "unavailable", error: r.reason,
+      tryUrls: [
+        { url: `https://openreview.net/forum?id=${item.value}`, label: "OpenReview forum" },
+        { url: `https://openreview.net/pdf?id=${item.value}`, label: "OpenReview PDF (direct)" },
+      ],
+    };
   } catch (e) {
     console.warn("OpenReview error for", display, e);
-    return { doi: display, source: "unavailable", error: e.message };
+    return {
+      doi: display, source: "unavailable", error: e.message,
+      tryUrls: [{ url: `https://openreview.net/forum?id=${item.value}`, label: "OpenReview forum" }],
+    };
   }
 }
 
@@ -157,6 +175,16 @@ async function handleDoi(item, settings, subfolder, s2Cache) {
   const doi = item.value;
   const publisher = publisherFromDoi(doi);
   console.info(`[${doi}] handleDoi start, publisher=${publisher}, biorxiv=${isBiorxivDoi(doi)}, arxiv=${!!arxivIdFromDoi(doi)}`);
+
+  // Accumulator: every URL we got from an API but failed to download.
+  // These are shown to the user so they can try opening them manually.
+  const tryUrls = [];
+  const seen = new Set();
+  const recordUrl = (url, label) => {
+    if (!url || seen.has(url)) return;
+    seen.add(url);
+    tryUrls.push({ url, label });
+  };
 
   // ----- Early routing for DOIs that have a definitive native source.
   const arxivId = arxivIdFromDoi(doi);
@@ -168,6 +196,8 @@ async function handleDoi(item, settings, subfolder, s2Cache) {
         const filename = await downloadBlob(r.blob, doi, subfolder);
         return { doi, source: "oa", via: "arxiv", arxivId: r.arxivId, filename };
       }
+      // arXiv failed, but the URL is deterministic — record the article page.
+      recordUrl(`https://arxiv.org/abs/${arxivId}`, "arXiv abstract");
       console.info(`[${doi}] arXiv miss:`, r.reason);
     } catch (e) {
       console.warn(`[${doi}] arXiv error:`, e);
@@ -182,6 +212,9 @@ async function handleDoi(item, settings, subfolder, s2Cache) {
         const filename = await downloadBlob(r.blob, doi, subfolder);
         return { doi, source: "oa", via: r.server, publisher: r.server, filename };
       }
+      // bioRxiv API confirms the preprint exists — record its landing page.
+      const host = doi.includes("medrxiv") ? "www.medrxiv.org" : "www.biorxiv.org";
+      recordUrl(`https://${host}/content/${doi}`, "bioRxiv article page");
       console.info(`[${doi}] bioRxiv miss:`, r.reason, r.status ? `(status ${r.status})` : "");
     } catch (e) {
       console.warn(`[${doi}] bioRxiv error:`, e);
@@ -199,6 +232,7 @@ async function handleDoi(item, settings, subfolder, s2Cache) {
       if (filename) {
         return { doi, source: "oa", via: "semanticscholar", license: hit.license, filename };
       }
+      recordUrl(hit.url, "Semantic Scholar OA link");
       console.info(`[${doi}] S2 URL was not a valid PDF, invalidating cache`);
       s2Cache.set(doi, undefined);
     } else {
@@ -218,6 +252,7 @@ async function handleDoi(item, settings, subfolder, s2Cache) {
         const filename = await downloadBlob(r.blob, doi, subfolder);
         return { doi, source: "oa", via: "core", title: r.title, filename };
       }
+      if (r.attemptedUrl) recordUrl(r.attemptedUrl, "CORE PDF URL");
       console.info(`[${doi}] CORE miss:`, r.reason);
     } catch (e) {
       console.warn(`[${doi}] CORE error:`, e);
@@ -281,6 +316,10 @@ async function handleDoi(item, settings, subfolder, s2Cache) {
       } else {
         console.info(`[${doi}] Unpaywall: no OA copy`);
       }
+      // Record every OA location Unpaywall knew about, whether we tried to fetch it or not.
+      if (Array.isArray(up.candidateUrls)) {
+        for (const u of up.candidateUrls) recordUrl(u, "Unpaywall OA location");
+      }
     } catch (e) {
       console.warn(`[${doi}] Unpaywall error:`, e);
     }
@@ -298,6 +337,10 @@ async function handleDoi(item, settings, subfolder, s2Cache) {
     if (pmc.found) {
       const filename = await downloadBlob(pmc.blob, doi, subfolder);
       return { doi, source: "pmc", pmcid: pmc.pmcid, filename };
+    }
+    // If we got a PMCID but no PDF, the article page is still useful.
+    if (pmc.pmcid) {
+      recordUrl(`https://www.ncbi.nlm.nih.gov/pmc/articles/${pmc.pmcid}/`, "PMC article page");
     }
     console.info(`[${doi}] PMC miss:`, pmc.reason);
   } catch (e) {
@@ -331,11 +374,16 @@ async function handleDoi(item, settings, subfolder, s2Cache) {
         const filename = await downloadBlob(fetched.blob, doi, subfolder);
         return { doi, source: "institutional", publisher, via: r.url, filename };
       }
+      // Resolver returned a URL we couldn't auto-fetch — user can try it manually.
+      recordUrl(r.url, "Institutional resolver link");
     }
   }
 
-  console.info(`[${doi}] all sources exhausted → unavailable`);
-  return { doi, source: "unavailable", publisher };
+  // Always include the DOI resolver itself as a last-resort link.
+  recordUrl(`https://doi.org/${doi}`, "DOI landing page");
+
+  console.info(`[${doi}] all sources exhausted → unavailable (${tryUrls.length} URLs to try manually)`);
+  return { doi, source: "unavailable", publisher, tryUrls };
 }
 
 async function processItem(item, settings, subfolder, s2Cache) {

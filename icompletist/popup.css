@@ -253,6 +253,31 @@ button.primary:hover { background: var(--accent); border-color: var(--accent); }
 #run-results .empty { padding: 20px; text-align: center; color: var(--muted); cursor: default; grid-template-columns: 1fr; }
 #run-results .empty:hover { background: white; }
 
+/* New: per-result detail block (when the row had to fall back to manual URLs). */
+#run-results li, #results-list li {
+  grid-template-columns: 1fr;
+}
+.row-main {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+.try-urls {
+  margin-top: 4px;
+  font-size: 10.5px;
+  color: var(--muted);
+  line-height: 1.5;
+  padding-left: 2px;
+}
+.try-urls a {
+  color: var(--accent);
+  text-decoration: none;
+}
+.try-urls a:hover {
+  text-decoration: underline;
+}
+
 #run-actions {
   margin-top: 10px;
   gap: 8px;

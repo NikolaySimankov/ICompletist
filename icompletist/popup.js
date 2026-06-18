@@ -78,8 +78,13 @@ ui.fetchBtn.addEventListener("click", async () => {
       const li = document.createElement("li");
       const sourceClass = r.source === "unavailable" ? "fail"
         : r.source === "institutional" ? "inst"
-        : r.source; // 'pmc', 'oa', 'tdm' all map directly
-      li.innerHTML = `<span class="doi">${r.doi}</span><span class="source ${sourceClass}">${r.source}</span>`;
+        : r.source;
+      const tryUrlsHtml = Array.isArray(r.tryUrls) && r.tryUrls.length
+        ? `<div class="try-urls">Try manually: ${r.tryUrls.map(
+            (u) => `<a href="${u.url}" target="_blank" rel="noopener noreferrer" title="${u.label}">${u.label}</a>`
+          ).join(" · ")}</div>`
+        : "";
+      li.innerHTML = `<div class="row-main"><span class="doi">${r.doi}</span><span class="source ${sourceClass}">${r.source}</span></div>${tryUrlsHtml}`;
       ui.resultsList.appendChild(li);
     } else if (msg.type === "done") {
       show("results");
@@ -177,12 +182,22 @@ function renderRunResults() {
     return;
   }
 
-  ui.runResults.innerHTML = run.results.map((e) => `
-    <li data-doi="${e.doi}" title="${(e.filename || e.error || "Click to copy DOI to textarea").replace(/"/g, "&quot;")}">
-      <span class="doi">${e.doi}</span>
-      <span class="source ${sourceClassFor(e.source)}">${e.source}</span>
-    </li>
-  `).join("");
+  ui.runResults.innerHTML = run.results.map((e) => {
+    const tryUrlsHtml = Array.isArray(e.tryUrls) && e.tryUrls.length
+      ? `<div class="try-urls">Try manually: ${e.tryUrls.map(
+          (u) => `<a href="${u.url}" target="_blank" rel="noopener noreferrer" title="${u.label}">${u.label}</a>`
+        ).join(" · ")}</div>`
+      : "";
+    return `
+      <li data-doi="${e.doi}" title="${(e.filename || e.error || "Click to copy DOI to textarea").replace(/"/g, "&quot;")}">
+        <div class="row-main">
+          <span class="doi">${e.doi}</span>
+          <span class="source ${sourceClassFor(e.source)}">${e.source}</span>
+        </div>
+        ${tryUrlsHtml}
+      </li>
+    `;
+  }).join("");
   ui.runActions.hidden = false;
 }
 
@@ -214,9 +229,10 @@ ui.refillBtn.addEventListener("click", () => {
 ui.exportRunBtn.addEventListener("click", () => {
   const run = runsCache.find((r) => r.id === selectedRunId);
   if (!run || !run.results.length) return;
-  const rows = [["doi", "source", "filename", "publisher", "error"]];
+  const rows = [["doi", "source", "filename", "publisher", "error", "try_urls"]];
   for (const e of run.results) {
-    rows.push([e.doi, e.source, e.filename || "", e.publisher || "", e.error || ""]);
+    const urls = Array.isArray(e.tryUrls) ? e.tryUrls.map((u) => u.url).join(" | ") : "";
+    rows.push([e.doi, e.source, e.filename || "", e.publisher || "", e.error || "", urls]);
   }
   const csv = rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
   const dataUrl = `data:text/csv;charset=utf-8,${encodeURIComponent(csv)}`;

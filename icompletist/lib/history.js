@@ -31,6 +31,7 @@ export async function appendToRun(runId, entry) {
     filename: entry.filename || null,
     publisher: entry.publisher || null,
     error: entry.error || null,
+    tryUrls: Array.isArray(entry.tryUrls) ? entry.tryUrls : null,
     at: Date.now(),
   });
   await chrome.storage.local.set({ [KEY]: runs });
