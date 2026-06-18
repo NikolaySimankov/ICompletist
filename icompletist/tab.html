@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>ICompletist</title>
+  <link rel="stylesheet" href="popup.css">
+  <style>
+    /* Tab mode: wider layout, centered, more breathing room. */
+    body {
+      width: auto;
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 32px 28px 48px;
+      min-height: 100vh;
+    }
+    header { padding-bottom: 14px; margin-bottom: 22px; }
+    h1 { font-size: 28px; }
+    textarea { min-height: 200px; }
+    #results-list { max-height: none; }
+    .tab-hint {
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 4px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>ICompletist</h1>
+    <div class="header-actions">
+      <button id="settings-btn" title="Settings">⚙</button>
+    </div>
+  </header>
+
+  <section id="input-section">
+    <label for="subfolder">Save to subfolder of Downloads/</label>
+    <input type="text" id="subfolder" placeholder="icompletist" value="icompletist">
+
+    <label for="dois" style="margin-top: 16px;">Paste identifiers (DOI, arXiv ID, or OpenReview ID)</label>
+    <textarea id="dois" rows="12" placeholder="10.1038/nature12373&#10;arXiv:2103.00020&#10;openreview.net/forum?id=...&#10;10.1101/2024.01.01.000000  (bioRxiv)&#10;10.1109/...  (IEEE)"></textarea>
+    <div class="tab-hint">Tab mode stays alive for long batches — safe to leave running.</div>
+    <div class="row">
+      <button id="fetch-btn" class="primary">Fetch articles</button>
+      <button id="clear-btn">Clear</button>
+    </div>
+  </section>
+
+  <section id="progress-section" hidden>
+    <div class="progress-bar"><div id="progress-fill"></div></div>
+    <div id="progress-text">Initializing…</div>
+    <div class="stats">
+      <span class="stat pmc">PMC: <b id="stat-pmc">0</b></span>
+      <span class="stat oa">OA: <b id="stat-oa">0</b></span>
+      <span class="stat inst">Institutional: <b id="stat-inst">0</b></span>
+      <span class="stat tdm">TDM API: <b id="stat-tdm">0</b></span>
+      <span class="stat fail">Unavailable: <b id="stat-fail">0</b></span>
+    </div>
+    <button id="cancel-btn">Cancel</button>
+  </section>
+
+  <section id="results-section" hidden>
+    <h2>Results</h2>
+    <ul id="results-list"></ul>
+    <button id="reset-btn">New batch</button>
+  </section>
+
+  <section id="history-section">
+    <div class="history-header">
+      <h2>Recent runs <span id="history-count" class="muted-count">0</span></h2>
+      <button id="history-clear" class="ghost-btn danger">Clear</button>
+    </div>
+    <select id="run-select"></select>
+    <ul id="run-results"></ul>
+    <div class="history-controls" id="run-actions" hidden>
+      <button id="refill-btn" class="ghost-btn">Re-fill textarea with this run's DOIs</button>
+      <button id="export-run-btn" class="ghost-btn">Export CSV</button>
+    </div>
+  </section>
+
+  <script src="popup.js" type="module"></script>
+</body>
+</html>

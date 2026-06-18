@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>ICompletist — Settings</title>
+  <link rel="stylesheet" href="popup.css">
+  <style>
+    body { width: 580px; padding: 24px; }
+    .field { margin-bottom: 18px; }
+    .field input { width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 3px; font: inherit; }
+    .field .hint { font-size: 11px; color: var(--muted); margin-top: 4px; line-height: 1.5; }
+    .field .hint a { color: var(--accent); }
+    .saved { color: var(--oa); font-size: 12px; margin-left: 10px; }
+    h3 { font-family: var(--font-display); font-size: 14px; margin: 20px 0 10px; padding-top: 14px; border-top: 1px solid var(--line); }
+  </style>
+</head>
+<body>
+  <header><h1>Settings</h1></header>
+
+  <div class="field">
+    <label for="email">Email (required for Unpaywall & PMC)</label>
+    <input type="email" id="email" placeholder="you@university.edu">
+    <div class="hint">Sent to Unpaywall and NCBI to identify you (standard etiquette, not auth). Both are free services.</div>
+  </div>
+
+  <div class="field">
+    <label for="ncbiApiKey">NCBI API key (optional)</label>
+    <input type="text" id="ncbiApiKey" placeholder="">
+    <div class="hint">Raises your PMC request limit from 3/sec to 10/sec. Get one free at <a href="https://www.ncbi.nlm.nih.gov/account/" target="_blank">ncbi.nlm.nih.gov/account</a> → Settings → API Key Management.</div>
+  </div>
+
+  <h3>Institutional link resolver</h3>
+  <div class="field">
+    <label for="resolverBase">OpenURL resolver base URL</label>
+    <input type="url" id="resolverBase" placeholder="https://your-uni.libkey.io/libraries/123/openurl">
+    <div class="hint">Ask your librarian for your institution's OpenURL endpoint. Used to fetch articles your institution licenses, via your own browser session.</div>
+  </div>
+
+  <h3>Publisher TDM APIs (optional)</h3>
+  <div class="field">
+    <label for="elsevierKey">Elsevier API key</label>
+    <input type="text" id="elsevierKey" placeholder="">
+    <div class="hint">Register at <a href="https://dev.elsevier.com/" target="_blank">dev.elsevier.com</a>. Requires your institution to be an Elsevier subscriber.</div>
+  </div>
+  <div class="field">
+    <label for="elsevierInstToken">Elsevier Institutional Token (optional)</label>
+    <input type="text" id="elsevierInstToken" placeholder="">
+    <div class="hint">Needed if you're off-campus. Issued by your library or via Elsevier support.</div>
+  </div>
+  <div class="field">
+    <label for="springerKey">Springer Nature API key</label>
+    <input type="text" id="springerKey" placeholder="">
+    <div class="hint">Register at <a href="https://dev.springernature.com/" target="_blank">dev.springernature.com</a>.</div>
+  </div>
+  <div class="field">
+    <label for="wileyToken">Wiley TDM token</label>
+    <input type="text" id="wileyToken" placeholder="">
+    <div class="hint">Get a token at <a href="https://onlinelibrary.wiley.com/library-info/resources/text-and-datamining" target="_blank">Wiley TDM resources</a>. Requires a Wiley Online Library account, and content access is determined by your institution's IP range.</div>
+  </div>
+  <div class="field">
+    <label for="ieeeKey">IEEE Xplore API key</label>
+    <input type="text" id="ieeeKey" placeholder="">
+    <div class="hint">Free key from <a href="https://developer.ieee.org/" target="_blank">developer.ieee.org</a>. Returns PDFs for Open Access IEEE articles only — paywalled IEEE content goes through the institutional resolver step.</div>
+  </div>
+
+  <button id="save-btn" class="primary">Save</button>
+  <span id="saved-indicator" class="saved" hidden>Saved ✓</span>
+
+  <script src="options.js"></script>
+</body>
+</html>

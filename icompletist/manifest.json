@@ -1,0 +1,48 @@
+{
+  "manifest_version": 3,
+  "name": "ICompletist",
+  "version": "0.9.0",
+  "description": "Bulk-fetch scientific articles legally: PMC, bioRxiv, arXiv, OpenReview, IEEE OA, Unpaywall, publisher TDM APIs, institutional resolver.",
+  "permissions": [
+    "storage",
+    "downloads",
+    "cookies",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://api.unpaywall.org/*",
+    "https://www.ncbi.nlm.nih.gov/*",
+    "https://europepmc.org/*",
+    "https://arxiv.org/*",
+    "https://api.biorxiv.org/*",
+    "https://www.biorxiv.org/*",
+    "https://www.medrxiv.org/*",
+    "https://openreview.net/*",
+    "https://ieeexploreapi.ieee.org/*",
+    "https://api.elsevier.com/*",
+    "https://api.springernature.com/*",
+    "https://api.wiley.com/*",
+    "https://api.crossref.org/*",
+    "https://doi.org/*",
+    "https://*/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "ICompletist",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "options_page": "options.html",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
