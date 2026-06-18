@@ -10,7 +10,7 @@
 const KEY = "runs";
 const MAX_RUNS = 10;
 
-export async function startRun(items, { kind = "fetch", spec = null, sources = null, queries = null } = {}) {
+export async function startRun(items, { kind = "fetch", spec = null, sources = null, queries = null, subfolder = null, ensure = null } = {}) {
   const { [KEY]: runs = [] } = await chrome.storage.local.get({ [KEY]: [] });
   const run = {
     id: Date.now(),
@@ -23,6 +23,12 @@ export async function startRun(items, { kind = "fetch", spec = null, sources = n
   if (spec) run.spec = spec;
   if (sources) run.sources = sources;
   if (queries) run.queries = queries;
+  if (subfolder) run.subfolder = subfolder;
+  if (ensure !== null) run.ensure = ensure;
+  // Persist the input items (and target subfolder) for fetch runs so an
+  // interrupted run can be resumed: we re-process only the items that never
+  // produced a result.
+  if (kind === "fetch" && Array.isArray(items) && items.length) run.items = items;
   runs.push(run);
   const trimmed = runs.length > MAX_RUNS ? runs.slice(-MAX_RUNS) : runs;
   await chrome.storage.local.set({ [KEY]: trimmed });
@@ -39,6 +45,9 @@ export async function appendToRun(runId, entry) {
   const realDoi = /^10\.\d{4,9}\//i.test(String(entry.doi || "")) ? entry.doi : null;
   run.results.push({
     doi: entry.doi,
+    // Original input string this result came from — the join key used to
+    // figure out which items still need processing when resuming a run.
+    original: entry.original || null,
     source: entry.source,
     filename: entry.filename || null,
     publisher: entry.publisher || null,
@@ -97,4 +106,9 @@ export async function getRuns() {
 
 export async function clearRuns() {
   await chrome.storage.local.set({ [KEY]: [] });
+}
+
+export async function deleteRun(runId) {
+  const { [KEY]: runs = [] } = await chrome.storage.local.get({ [KEY]: [] });
+  await chrome.storage.local.set({ [KEY]: runs.filter((r) => r.id !== runId) });
 }

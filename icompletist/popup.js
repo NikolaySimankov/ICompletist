@@ -33,6 +33,9 @@ const ui = {
   refillBtn: $("refill-btn"),
   exportRunBtn: $("export-run-btn"),
   downloadPdfsBtn: $("download-pdfs-btn"),
+  resumeBtn: $("resume-btn"),
+  recoverQueryBtn: $("recover-query-btn"),
+  deleteRunBtn: $("delete-run-btn"),
   // Search-mode bindings:
   modeIdBtn: $("mode-id-btn"),
   modeSearchBtn: $("mode-search-btn"),
@@ -388,8 +391,9 @@ function renderRunResults() {
     return;
   }
   if (!run.results.length) {
+    // No results yet — but still surface Resume/Delete for interrupted runs.
     ui.runResults.innerHTML = `<li class="empty">This run has no results yet.</li>`;
-    ui.runActions.hidden = true;
+    setRunActionVisibility(run);
     return;
   }
 
@@ -433,9 +437,26 @@ function renderRunResults() {
     }).join("");
   }
 
+  setRunActionVisibility(run);
+}
+
+// Decide which run-action buttons apply to the selected run.
+function setRunActionVisibility(run) {
   ui.runActions.hidden = false;
-  // Only show the "Download PDFs for this batch" button on search runs.
-  if (ui.downloadPdfsBtn) ui.downloadPdfsBtn.hidden = run.kind !== "search";
+  const isSearch = run.kind === "search";
+  const incomplete = !run.finishedAt;
+  const hasResults = run.results.length > 0;
+  if (ui.downloadPdfsBtn) ui.downloadPdfsBtn.hidden = !isSearch || !hasResults;
+  // Recover the query: search runs that stored their spec.
+  if (ui.recoverQueryBtn) ui.recoverQueryBtn.hidden = !(isSearch && run.spec);
+  // Resume: fetch runs that never finished and still have their input items.
+  if (ui.resumeBtn) {
+    ui.resumeBtn.hidden = !(incomplete && !isSearch && Array.isArray(run.items) && run.items.length);
+  }
+  // Refill / export only make sense once there are results.
+  if (ui.refillBtn) ui.refillBtn.hidden = !hasResults;
+  if (ui.exportRunBtn) ui.exportRunBtn.hidden = !hasResults;
+  // Delete is always available (default-visible).
 }
 
 ui.runSelect.addEventListener("change", (e) => {
@@ -461,6 +482,109 @@ ui.refillBtn.addEventListener("click", () => {
   const dois = run.results.map((r) => r.doi).join("\n");
   ui.doisField.value = dois;
   show("input");
+});
+
+// ---- Delete a single run ----
+ui.deleteRunBtn?.addEventListener("click", async () => {
+  const run = runsCache.find((r) => r.id === selectedRunId);
+  if (!run) return;
+  if (!confirm("Delete this run from history? This cannot be undone.")) return;
+  const remaining = runsCache.filter((r) => r.id !== selectedRunId);
+  await chrome.storage.local.set({ runs: remaining });
+  runsCache = remaining;
+  selectedRunId = null;
+  renderRunDropdown();
+});
+
+// ---- Recover the query from a search run ----
+// Rebuild the line-per-group query text + all the search controls from the
+// stored spec so the user can tweak and re-run.
+function reconstructQueryText(spec) {
+  const q = (t) => (/\s/.test(t) ? `"${t}"` : t);
+  return (spec.groups || []).map((g, i) => {
+    const inner = g.terms.map(q).join(` ${g.internal || "OR"} `);
+    return i === 0 ? inner : `${g.external || "AND"} ${inner}`;
+  }).join("\n");
+}
+
+ui.recoverQueryBtn?.addEventListener("click", () => {
+  const run = runsCache.find((r) => r.id === selectedRunId);
+  if (!run || run.kind !== "search" || !run.spec) return;
+  const spec = run.spec;
+  setMode("search");
+  if (ui.queryText) ui.queryText.value = reconstructQueryText(spec);
+  if (ui.yearFrom) ui.yearFrom.value = spec.yearFrom || "";
+  if (ui.yearTo) ui.yearTo.value = spec.yearTo || "";
+  if (ui.fieldSelect && spec.field) ui.fieldSelect.value = spec.field;
+  const doctype = new Set(spec.doctype && spec.doctype.length ? spec.doctype : ["article", "review"]);
+  document.querySelectorAll(".doctype-cb").forEach((cb) => { cb.checked = doctype.has(cb.value); });
+  const sources = new Set(run.sources || []);
+  document.querySelectorAll(".source-cb").forEach((cb) => { cb.checked = sources.has(cb.value); });
+  const ensureCb = document.getElementById("ensure-cb");
+  if (ensureCb) ensureCb.checked = run.ensure !== false;
+  showQueryError("");
+  show("input");
+  document.querySelector("#input-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
+});
+
+// ---- Resume an interrupted fetch run ----
+// Re-process only the items that never produced a result, appending into the
+// same run so history stays coherent.
+ui.resumeBtn?.addEventListener("click", () => {
+  const run = runsCache.find((r) => r.id === selectedRunId);
+  if (!run || run.kind === "search" || !Array.isArray(run.items)) return;
+
+  const done = new Set(run.results.map((r) => r.original).filter(Boolean));
+  const remaining = run.items.filter((it) => !done.has(it.original));
+  if (!remaining.length) {
+    alert("Nothing to resume — every item in this run already has a result.");
+    return;
+  }
+  if (!confirm(`Resume this run? ${remaining.length} of ${run.items.length} item(s) still need processing.`)) return;
+
+  show("progress");
+  ui.resultsList.innerHTML = "";
+  for (const k of ["statPmc", "statOa", "statInst", "statTdm", "statCached", "statFail"]) ui[k].textContent = "0";
+  // Restore the standard stats panel in case search mode replaced it.
+  const statsEl = document.querySelector("#progress-section .stats");
+  if (statsEl) {
+    statsEl.classList.remove("search-progress");
+    statsEl.innerHTML = `
+      <span class="stat pmc">PMC: <b id="stat-pmc">0</b></span>
+      <span class="stat oa">OA: <b id="stat-oa">0</b></span>
+      <span class="stat inst">Institutional: <b id="stat-inst">0</b></span>
+      <span class="stat tdm">TDM API: <b id="stat-tdm">0</b></span>
+      <span class="stat cached">Cached: <b id="stat-cached">0</b></span>
+      <span class="stat fail">Unavailable: <b id="stat-fail">0</b></span>`;
+    ui.statPmc = $("stat-pmc"); ui.statOa = $("stat-oa"); ui.statInst = $("stat-inst");
+    ui.statTdm = $("stat-tdm"); ui.statCached = $("stat-cached"); ui.statFail = $("stat-fail");
+  }
+
+  const subfolder = run.subfolder || "icompletist";
+  const port = chrome.runtime.connect({ name: "fetch-job" });
+  startKeepalive();
+  port.postMessage({ type: "start", items: remaining, subfolder, resumeRunId: run.id });
+
+  port.onMessage.addListener((msg) => {
+    if (msg.type === "progress") {
+      ui.progressFill.style.width = `${(msg.done / msg.total) * 100}%`;
+      ui.progressText.textContent = `${msg.done} / ${msg.total} — ${msg.currentDoi || ""}`;
+    } else if (msg.type === "result") {
+      const r = msg.result;
+      const counter = { pmc: "statPmc", oa: "statOa", institutional: "statInst", tdm: "statTdm", cached: "statCached", unavailable: "statFail" }[r.source];
+      if (counter) ui[counter].textContent = String(parseInt(ui[counter].textContent, 10) + 1);
+      const li = document.createElement("li");
+      const sourceClass = r.source === "unavailable" ? "fail" : r.source === "institutional" ? "inst" : r.source;
+      li.innerHTML = `<div class="row-main"><span class="doi">${r.doi}</span><span class="source ${sourceClass}">${r.source}</span></div>`;
+      ui.resultsList.appendChild(li);
+    } else if (msg.type === "done") {
+      stopKeepalive();
+      show("results");
+      ui.progressText.textContent = `Finished: ${msg.summary.pmc || 0} PMC, ${msg.summary.oa || 0} OA, ${msg.summary.institutional || 0} institutional, ${msg.summary.tdm || 0} TDM, ${msg.summary.cached || 0} cached, ${msg.summary.unavailable || 0} unavailable.`;
+    }
+  });
+
+  ui.cancelBtn.onclick = () => { stopKeepalive(); port.postMessage({ type: "cancel" }); show("input"); };
 });
 
 // "Download PDFs for this batch" — only shown for search-kind runs.

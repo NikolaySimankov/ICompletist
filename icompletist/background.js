@@ -21,7 +21,7 @@ import { wileyTdmFetch } from "./lib/wiley.js";
 import { coreLookup } from "./lib/core.js";
 import { s2BatchLookup } from "./lib/semanticscholar.js";
 import { resolveOpenUrl, fetchWithSession } from "./lib/resolver.js";
-import { startRun, appendToRun, finishRun, replaceRunResults } from "./lib/history.js";
+import { startRun, appendToRun, finishRun, replaceRunResults, getRuns } from "./lib/history.js";
 import { isPdfBlob, describeBlob } from "./lib/pdfcheck.js";
 import { runSearch, buildQueries } from "./lib/search/orchestrate.js";
 import { selectArticles } from "./lib/search/select.js";
@@ -579,9 +579,11 @@ async function runPool(items, settings, subfolder, s2Cache, onResult, isCancelle
       onResult({ type: "progress", done: i, total, currentDoi: item.value });
       try {
         const result = await processItem(item, settings, subfolder, s2Cache);
+        // Tag with the original input so resume can tell what's been done.
+        result.original = item.original;
         onResult({ type: "result", result });
       } catch (e) {
-        onResult({ type: "result", result: { doi: item.value, source: "unavailable", error: e.message } });
+        onResult({ type: "result", result: { doi: item.value, original: item.original, source: "unavailable", error: e.message } });
       }
     }
   }
@@ -623,9 +625,23 @@ chrome.runtime.onConnect.addListener((port) => {
 
     const subfolder = msg.subfolder || "icompletist";
     const settings = await getSettings();
-    const summary = { pmc: 0, oa: 0, institutional: 0, tdm: 0, unavailable: 0 };
+    const summary = { pmc: 0, oa: 0, institutional: 0, tdm: 0, cached: 0, unavailable: 0 };
 
-    const runId = await startRun(items);
+    // Resume mode: append to an existing (interrupted) run rather than
+    // creating a new one. `items` here are only the not-yet-processed items;
+    // we seed the summary from the results already in the run so the final
+    // tally is cumulative.
+    let runId;
+    if (msg.resumeRunId) {
+      runId = msg.resumeRunId;
+      const existing = (await getRuns()).find((r) => r.id === runId);
+      for (const res of existing?.results || []) {
+        summary[res.source] = (summary[res.source] || 0) + 1;
+      }
+      console.info(`Resuming run ${runId}: ${items.length} item(s) remaining`);
+    } else {
+      runId = await startRun(items, { subfolder });
+    }
 
     // Pre-pass: batch-query Semantic Scholar for DOI items only.
     let s2Cache = new Map();
@@ -698,6 +714,7 @@ chrome.runtime.onConnect.addListener((port) => {
       spec,
       sources,
       queries,
+      ensure: ensureEnabled,
     });
 
     try {
