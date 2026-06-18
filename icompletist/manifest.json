@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "ICompletist",
-  "version": "1.5.0",
-  "description": "Search and bulk-fetch scientific articles legally. v2 adds multi-database search across PubMed, Scopus, Semantic Scholar, and CORE, an automatic ENSURE precision filter, full bibliographic metadata in RIS export, and per-source throttling for ~10× faster OA-heavy batches.",
+  "version": "1.6.0",
+  "description": "Search and bulk-fetch scientific articles legally. v2 adds multi-database search across PubMed, Scopus, Semantic Scholar, and CORE, an automatic ENSURE precision filter, full bibliographic metadata in RIS export, per-source throttling, and publisher-native APIs (Wiley/Springer/Elsevier TDM + IEEE OA) tried first for matching DOIs.",
   "permissions": [
     "storage",
     "downloads",

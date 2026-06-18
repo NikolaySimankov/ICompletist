@@ -267,7 +267,70 @@ async function handleDoi(item, settings, subfolder, s2Cache) {
 
   // ----- Generic pipeline -----
 
-  // Step 1: Semantic Scholar cache shortcut.
+  // Step 1: Publisher-native authoritative APIs.
+  //
+  // For DOIs whose publisher we recognize AND whose key/token the user has
+  // configured, this is the legitimate institutional access path — it
+  // returns the publisher's own PDF and usually beats any OA preprint we
+  // might find later. Trying these first also avoids wasted CORE / Unpaywall
+  // / PMC roundtrips for items those aggregators rarely hold (Elsevier /
+  // Wiley / Springer paywalled content). The OA cascade below still runs
+  // as a fallback when the publisher API is unconfigured or misses.
+  //
+  // Each guard is double: (publisher prefix match) AND (key configured).
+  // For a DOI outside the Elsevier/Springer/Wiley/IEEE prefix space (e.g.
+  // PLOS 10.1371, ACS 10.1021, APS 10.1094), every check below short-
+  // circuits on the prefix test — zero wasted network calls, zero throttle
+  // wait. The item drops straight into Step 2.
+  if (publisher === "elsevier" && settings.elsevierKey) {
+    console.info(`[${doi}] trying Elsevier TDM (publisher match, key configured)`);
+    await throttle("elsevier-tdm");
+    const r = await elsevierTdmFetch(doi, {
+      apiKey: settings.elsevierKey,
+      instToken: settings.elsevierInstToken,
+    });
+    if (r.found) {
+      const filename = await downloadBlob(r.blob, doi, subfolder);
+      return { doi, source: "tdm", publisher, filename };
+    }
+    console.info(`[${doi}] Elsevier TDM miss:`, r.reason, r.status ? `(${r.status})` : "");
+  }
+  if (publisher === "springer" && settings.springerKey) {
+    console.info(`[${doi}] trying Springer TDM (publisher match, key configured)`);
+    await throttle("springer-tdm");
+    const r = await springerTdmFetch(doi, { apiKey: settings.springerKey });
+    if (r.found) {
+      const filename = await downloadBlob(r.blob, doi, subfolder);
+      return { doi, source: "tdm", publisher, filename };
+    }
+    console.info(`[${doi}] Springer TDM miss:`, r.reason);
+  }
+  if (publisher === "wiley" && settings.wileyToken) {
+    console.info(`[${doi}] trying Wiley TDM (publisher match, token configured)`);
+    await throttle("wiley-tdm");
+    const r = await wileyTdmFetch(doi, { token: settings.wileyToken });
+    if (r.found) {
+      const filename = await downloadBlob(r.blob, doi, subfolder);
+      return { doi, source: "tdm", publisher, filename };
+    }
+    console.info(`[${doi}] Wiley TDM miss:`, r.reason, r.status ? `(${r.status})` : "");
+  }
+  if (isIeeeDoi(doi) && settings.ieeeKey) {
+    console.info(`[${doi}] trying IEEE OA (publisher match, key configured)`);
+    try {
+      await throttle("ieee");
+      const r = await ieeeOaFetch(doi, { apiKey: settings.ieeeKey });
+      if (r.found) {
+        const filename = await downloadBlob(r.blob, doi, subfolder);
+        return { doi, source: "oa", via: "ieee", publisher: "ieee", filename };
+      }
+      console.info(`[${doi}] IEEE miss:`, r.reason);
+    } catch (e) {
+      console.warn(`[${doi}] IEEE error:`, e);
+    }
+  }
+
+  // Step 2: Semantic Scholar cache shortcut.
   if (s2Cache && s2Cache.has(doi)) {
     const hit = s2Cache.get(doi);
     if (hit && hit.url) {
@@ -286,7 +349,7 @@ async function handleDoi(item, settings, subfolder, s2Cache) {
     console.info(`[${doi}] not in S2 cache`);
   }
 
-  // Step 2: CORE.
+  // Step 3: CORE.
   if (settings.coreApiKey) {
     console.info(`[${doi}] trying CORE`);
     try {
@@ -303,41 +366,6 @@ async function handleDoi(item, settings, subfolder, s2Cache) {
     }
   } else {
     console.info(`[${doi}] skipping CORE (no key)`);
-  }
-
-  // Step 3: Publisher TDM APIs.
-  if (publisher === "elsevier" && settings.elsevierKey) {
-    console.info(`[${doi}] trying Elsevier TDM`);
-    await throttle("elsevier-tdm");
-    const r = await elsevierTdmFetch(doi, {
-      apiKey: settings.elsevierKey,
-      instToken: settings.elsevierInstToken,
-    });
-    if (r.found) {
-      const filename = await downloadBlob(r.blob, doi, subfolder);
-      return { doi, source: "tdm", publisher, filename };
-    }
-    console.info(`[${doi}] Elsevier TDM miss:`, r.reason, r.status ? `(${r.status})` : "");
-  }
-  if (publisher === "springer" && settings.springerKey) {
-    console.info(`[${doi}] trying Springer TDM`);
-    await throttle("springer-tdm");
-    const r = await springerTdmFetch(doi, { apiKey: settings.springerKey });
-    if (r.found) {
-      const filename = await downloadBlob(r.blob, doi, subfolder);
-      return { doi, source: "tdm", publisher, filename };
-    }
-    console.info(`[${doi}] Springer TDM miss:`, r.reason);
-  }
-  if (publisher === "wiley" && settings.wileyToken) {
-    console.info(`[${doi}] trying Wiley TDM`);
-    await throttle("wiley-tdm");
-    const r = await wileyTdmFetch(doi, { token: settings.wileyToken });
-    if (r.found) {
-      const filename = await downloadBlob(r.blob, doi, subfolder);
-      return { doi, source: "tdm", publisher, filename };
-    }
-    console.info(`[${doi}] Wiley TDM miss:`, r.reason, r.status ? `(${r.status})` : "");
   }
 
   // Step 4: Unpaywall. Always try — S2 and Unpaywall sometimes disagree about
@@ -389,23 +417,7 @@ async function handleDoi(item, settings, subfolder, s2Cache) {
     console.warn(`[${doi}] PMC error:`, e);
   }
 
-  // Step 6: IEEE OA.
-  if (isIeeeDoi(doi) && settings.ieeeKey) {
-    console.info(`[${doi}] trying IEEE OA`);
-    try {
-      await throttle("ieee");
-      const r = await ieeeOaFetch(doi, { apiKey: settings.ieeeKey });
-      if (r.found) {
-        const filename = await downloadBlob(r.blob, doi, subfolder);
-        return { doi, source: "oa", via: "ieee", publisher: "ieee", filename };
-      }
-      console.info(`[${doi}] IEEE miss:`, r.reason);
-    } catch (e) {
-      console.warn(`[${doi}] IEEE error:`, e);
-    }
-  }
-
-  // Step 7: Institutional resolver.
+  // Step 6: Institutional resolver.
   if (settings.resolverBase) {
     console.info(`[${doi}] trying institutional resolver`);
     await throttle(publisher);
