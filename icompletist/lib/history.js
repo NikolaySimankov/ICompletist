@@ -40,6 +40,16 @@ export async function appendToRun(runId, entry) {
     publisher: entry.publisher || null,
     error: entry.error || null,
     tryUrls: Array.isArray(entry.tryUrls) ? entry.tryUrls : null,
+    // Pull through any rich metadata returned by the fetch handlers:
+    // Unpaywall and CORE return titles; arXiv returns arxivId; Unpaywall
+    // returns license; handleDoi tags `via` with the source that succeeded.
+    // Without this, RIS export for fetch-mode runs loses everything but
+    // the DOI and the local filename.
+    title: entry.title || null,
+    via: entry.via || null,
+    license: entry.license || null,
+    pmcid: entry.pmcid || null,
+    arxivId: entry.arxivId || null,
     at: Date.now(),
   });
   await chrome.storage.local.set({ [KEY]: runs });

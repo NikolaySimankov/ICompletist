@@ -573,12 +573,17 @@ chrome.runtime.onConnect.addListener((port) => {
       const results = ensured.map((it) => ({
         doi: it.doi || it.arxivId ? (it.doi || `arxiv:${it.arxivId}`) : (it.title || it.id),
         source: "search",
-        // Carry richer fields:
+        // Carry richer fields — these all flow straight into RIS export
+        // (AU/PY/JO/VL/SP/EP/AB/KW) without the user re-fetching anything.
+        // `keywords` is the slot for the v2.1 ENRICH cascade.
         title: it.title || null,
         year: it.year || null,
         journal: it.journal || null,
+        volume: it.volume || null,
+        pages: it.pages || null,
         authors: it.authors || [],
         abstract: it.abstract || null,
+        keywords: Array.isArray(it.keywords) ? it.keywords : null,
         sources: it.sources || [],
         identifiers: {
           doi: it.doi || null,
