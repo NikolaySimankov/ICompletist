@@ -4,6 +4,7 @@ import { buildRis } from "./lib/risexport.js";
 import { buildSpec, QueryParseError } from "./lib/search/spec.js";
 import { isPdfBlob } from "./lib/pdfcheck.js";
 import { updateRunResult, removeRunResult, removeUnavailableResults } from "./lib/history.js";
+import { commonNamesFromWikidata } from "./lib/wikidata.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -52,6 +53,10 @@ const ui = {
   limitInput: $("limit-input"),
   searchBtn: $("search-btn"),
   searchClearBtn: $("search-clear-btn"),
+  prequeryInput: $("prequery-input"),
+  prequeryBtn: $("prequery-btn"),
+  prequeryStatus: $("prequery-status"),
+  prequeryResults: $("prequery-results"),
 };
 
 // Restore last-used subfolder on open.
@@ -279,6 +284,68 @@ ui.searchBtn?.addEventListener("click", async () => {
 ui.searchClearBtn?.addEventListener("click", () => {
   if (ui.queryText) ui.queryText.value = "";
   showQueryError("");
+});
+
+// ---- Prequery: Wikidata common-name expansion ----
+const _esc = (s) => String(s).replace(/[&<>"]/g, (c) =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+ui.prequeryBtn?.addEventListener("click", async () => {
+  const term = (ui.prequeryInput?.value || "").trim();
+  if (!term) return;
+  ui.prequeryResults.hidden = true;
+  ui.prequeryResults.innerHTML = "";
+  ui.prequeryStatus.hidden = false;
+  ui.prequeryStatus.className = "prequery-status";
+  ui.prequeryStatus.textContent = "Searching Wikidata…";
+
+  let names = [];
+  try {
+    const { email } = await new Promise((r) => chrome.storage.sync.get({ email: "" }, r));
+    names = await commonNamesFromWikidata(term, email);
+  } catch (e) {
+    ui.prequeryStatus.className = "prequery-status err";
+    ui.prequeryStatus.textContent = `Wikidata lookup failed: ${e.message}`;
+    return;
+  }
+
+  // Always offer the original term plus the discovered names.
+  const all = [];
+  const seen = new Set();
+  for (const n of [term, ...names]) {
+    const key = n.toLowerCase();
+    if (!seen.has(key)) { seen.add(key); all.push(n); }
+  }
+  if (all.length <= 1) {
+    ui.prequeryStatus.className = "prequery-status";
+    ui.prequeryStatus.textContent = `No common names found for “${term}”.`;
+    return;
+  }
+
+  ui.prequeryStatus.hidden = true;
+  ui.prequeryResults.hidden = false;
+  ui.prequeryResults.innerHTML = `
+    <div class="prequery-hint">${all.length} terms — untick any you don't want, then add:</div>
+    <div class="prequery-chips">
+      ${all.map((n) => `<label class="chip"><input type="checkbox" checked data-term="${_esc(n)}"> ${_esc(n)}</label>`).join("")}
+    </div>
+    <button class="prequery-add">Add as OR group to query</button>
+  `;
+});
+
+ui.prequeryResults?.addEventListener("click", (e) => {
+  if (!e.target.closest(".prequery-add")) return;
+  const checked = [...ui.prequeryResults.querySelectorAll(".chip input:checked")].map((cb) => cb.dataset.term);
+  if (!checked.length) return;
+  const group = checked.map((t) => `"${t}"`).join(" OR ");
+  const cur = (ui.queryText.value || "").replace(/\s+$/, "");
+  // First group has no operator; later groups are AND-joined (synonyms narrow
+  // an existing query). The user can edit the operator afterward.
+  ui.queryText.value = cur ? `${cur}\nAND ${group}` : group;
+  ui.prequeryResults.hidden = true;
+  ui.prequeryResults.innerHTML = "";
+  if (ui.prequeryInput) ui.prequeryInput.value = "";
+  ui.queryText.focus();
 });
 
 ui.fetchBtn.addEventListener("click", async () => {

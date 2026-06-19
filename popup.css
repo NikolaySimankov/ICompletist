@@ -438,6 +438,53 @@ button.primary:hover { background: var(--accent); border-color: var(--accent); }
   white-space: pre-wrap;
 }
 
+/* ---- Prequery (Wikidata expansion) ---- */
+.prequery { margin-bottom: 6px; }
+.prequery-row { display: flex; gap: 6px; }
+.prequery-row input { flex: 1; padding: 7px 10px; }
+.prequery-row button {
+  white-space: nowrap;
+  font-size: 12px;
+  padding: 7px 12px;
+}
+.prequery-status { font-size: 11px; color: var(--muted); margin-top: 6px; }
+.prequery-status.err { color: var(--fail); }
+.prequery-results {
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: var(--hover-bg);
+}
+.prequery-hint { font-size: 10.5px; color: var(--muted); margin-bottom: 6px; }
+.prequery-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.prequery-chips .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--ink);
+  text-transform: none;
+  letter-spacing: normal;
+  margin: 0;
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--field-bg);
+  cursor: pointer;
+}
+.prequery-chips .chip input { margin: 0; }
+.prequery-add {
+  font-size: 11px;
+  padding: 5px 12px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: var(--field-bg);
+  color: var(--ink);
+  cursor: pointer;
+}
+.prequery-add:hover { border-color: var(--accent); color: var(--accent); }
+
 .search-controls {
   display: grid;
   grid-template-columns: 1fr 1fr;

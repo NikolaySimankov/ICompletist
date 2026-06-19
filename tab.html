@@ -53,6 +53,16 @@
     </div>
 
     <div id="search-panel" hidden>
+      <div class="prequery">
+        <label for="prequery-input" style="margin-top: 16px;">Expand a term via Wikidata (optional)</label>
+        <div class="prequery-row">
+          <input type="text" id="prequery-input" placeholder="e.g. Phytophthora infestans">
+          <button id="prequery-btn">Find common names</button>
+        </div>
+        <div id="prequery-status" class="prequery-status" hidden></div>
+        <div id="prequery-results" class="prequery-results" hidden></div>
+      </div>
+
       <label for="query-text" style="margin-top: 16px;">Query (one group per line, lines joined by AND / OR / AND NOT)</label>
       <textarea id="query-text" rows="8" placeholder="plant OR vegetation OR crop&#10;AND pathogen OR disease OR pest&#10;AND NOT wheat OR rice"></textarea>
       <div id="query-error" class="query-error" hidden></div>
