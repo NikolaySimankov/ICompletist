@@ -14,6 +14,7 @@ const ui = {
   results: $("results-section"),
   doisField: $("dois"),
   subfolderField: $("subfolder"),
+  downloadMode: $("download-mode"),
   fetchBtn: $("fetch-btn"),
   clearBtn: $("clear-btn"),
   cancelBtn: $("cancel-btn"),
@@ -63,6 +64,17 @@ const ui = {
 chrome.storage.local.get({ subfolder: "icompletist" }, ({ subfolder }) => {
   ui.subfolderField.value = subfolder;
 });
+
+// Restore + persist the download mode (PDF / TXT / both).
+chrome.storage.local.get({ downloadMode: "pdf" }, ({ downloadMode }) => {
+  if (ui.downloadMode) ui.downloadMode.value = downloadMode;
+});
+ui.downloadMode?.addEventListener("change", () => {
+  chrome.storage.local.set({ downloadMode: ui.downloadMode.value });
+});
+function getDownloadMode() {
+  return ui.downloadMode?.value || "pdf";
+}
 
 // ---- Theme (light / dark / auto) ----
 // "auto" follows the OS (no data-theme attribute → the prefers-color-scheme
@@ -366,7 +378,7 @@ ui.fetchBtn.addEventListener("click", async () => {
 
   const port = chrome.runtime.connect({ name: "fetch-job" });
   startKeepalive();
-  port.postMessage({ type: "start", items, subfolder });
+  port.postMessage({ type: "start", items, subfolder, downloadMode: getDownloadMode() });
 
   port.onMessage.addListener((msg) => {
     if (msg.type === "progress") {
@@ -797,7 +809,7 @@ ui.resumeBtn?.addEventListener("click", () => {
   const subfolder = run.subfolder || "icompletist";
   const port = chrome.runtime.connect({ name: "fetch-job" });
   startKeepalive();
-  port.postMessage({ type: "start", items: remaining, subfolder, resumeRunId: run.id });
+  port.postMessage({ type: "start", items: remaining, subfolder, resumeRunId: run.id, downloadMode: getDownloadMode() });
 
   port.onMessage.addListener((msg) => {
     if (msg.type === "progress") {
@@ -879,7 +891,7 @@ ui.downloadPdfsBtn?.addEventListener("click", () => {
 
   const port = chrome.runtime.connect({ name: "fetch-job" });
   startKeepalive();
-  port.postMessage({ type: "start", items, subfolder });
+  port.postMessage({ type: "start", items, subfolder, downloadMode: getDownloadMode() });
 
   port.onMessage.addListener((msg) => {
     if (msg.type === "progress") {

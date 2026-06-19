@@ -319,7 +319,7 @@ button.primary:hover { background: var(--accent); border-color: var(--accent); }
 .ghost-btn.danger { color: var(--fail); }
 .ghost-btn.danger:hover { background: var(--fail); color: var(--primary-text); border-color: var(--fail); }
 
-#run-select {
+#run-select, #download-mode {
   width: 100%;
   padding: 7px 10px;
   border: 1px solid var(--line);
@@ -331,6 +331,7 @@ button.primary:hover { background: var(--accent); border-color: var(--accent); }
   margin-bottom: 10px;
   cursor: pointer;
 }
+#download-mode:focus { outline: none; border-color: var(--accent); }
 #run-select:focus { outline: none; border-color: var(--accent); }
 
 #run-results {

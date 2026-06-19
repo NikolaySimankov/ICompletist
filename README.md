@@ -83,3 +83,5 @@ Click the ⚙ button in the popup header. The only required field is **Email** (
 ## Acknowledgments
 
 - **Claude Code (Opus 4.8)** by [Anthropic](https://www.anthropic.com) — AI pair programming assistance for development of this project.
+- **[PDF.js](https://mozilla.github.io/pdf.js/)** ([`pdfjs-dist`](https://www.npmjs.com/package/pdfjs-dist), v4.7.76) by Mozilla — used for the PDF→text extraction behind the "Text only" / "PDF + Text" download options. Licensed under [Apache-2.0](https://github.com/mozilla/pdf.js/blob/master/LICENSE).
+- Approach for PDF text/markdown extraction inspired by [**pdf-to-markdown**](https://github.com/jzillmann/pdf-to-markdown) by Johannes Zillmann ([pdf2md.morethan.io](https://pdf2md.morethan.io/)).

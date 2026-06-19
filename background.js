@@ -157,21 +157,87 @@ async function getDownloadPath(downloadId) {
   return null;
 }
 
-async function downloadBlob(blob, identifier, subfolder) {
-  const url = await blobToDataUrl(blob);
+function safeName(identifier, subfolder, ext) {
   const safe = identifier.replace(/[^a-z0-9]+/gi, "_");
   const folder = (subfolder || "icompletist").replace(/[<>:"|?*\x00-\x1f]/g, "_");
-  const filename = `${folder}/${safe}.pdf`;
+  return `${folder}/${safe}.${ext}`;
+}
+
+async function saveDataUrl(url, filename) {
   const downloadId = await chrome.downloads.download({
-    url,
-    filename,
-    saveAs: false,
-    conflictAction: "uniquify",
+    url, filename, saveAs: false, conflictAction: "uniquify",
   });
   // Prefer the real absolute path (so RIS export gets a working file:// link
   // with no extra configuration, and it reflects any uniquify rename).
-  const absolute = await getDownloadPath(downloadId);
-  return absolute || filename;
+  return (await getDownloadPath(downloadId)) || filename;
+}
+
+async function savePdf(blob, identifier, subfolder) {
+  const url = await blobToDataUrl(blob);
+  return saveDataUrl(url, safeName(identifier, subfolder, "pdf"));
+}
+
+async function saveText(text, identifier, subfolder) {
+  const url = "data:text/plain;charset=utf-8," + encodeURIComponent(text);
+  return saveDataUrl(url, safeName(identifier, subfolder, "txt"));
+}
+
+// ---- PDF → text via the offscreen pdf.js document ----
+let _offscreenCreating = null;
+async function ensureOffscreen() {
+  const contexts = await chrome.runtime.getContexts({ contextTypes: ["OFFSCREEN_DOCUMENT"] });
+  if (contexts && contexts.length) return;
+  if (_offscreenCreating) { await _offscreenCreating; return; }
+  _offscreenCreating = chrome.offscreen.createDocument({
+    url: chrome.runtime.getURL("offscreen.html"),
+    reasons: ["WORKERS"],
+    justification: "Run pdf.js to extract raw text from downloaded PDFs for the TXT export option.",
+  });
+  try { await _offscreenCreating; } finally { _offscreenCreating = null; }
+}
+
+async function blobToBase64(blob) {
+  const dataUrl = await blobToDataUrl(blob);
+  const i = dataUrl.indexOf(",");
+  return i >= 0 ? dataUrl.slice(i + 1) : dataUrl;
+}
+
+async function extractPdfText(blob) {
+  try {
+    await ensureOffscreen();
+    const dataBase64 = await blobToBase64(blob);
+    const resp = await chrome.runtime.sendMessage({ type: "extract-text", dataBase64 });
+    if (resp && resp.ok) return resp.text;
+    console.warn("PDF text extraction failed:", resp && resp.error);
+  } catch (e) {
+    console.warn("extractPdfText error:", e);
+  }
+  return null;
+}
+
+// Per-job download mode: "pdf" | "txt" | "both". Set when a fetch job starts.
+let currentDownloadMode = "pdf";
+
+// Save a downloaded PDF blob according to the active download mode. Returns the
+// primary on-disk path for history/RIS (PDF when saved, else the TXT).
+async function downloadBlob(blob, identifier, subfolder, mode = currentDownloadMode) {
+  let pdfPath = null;
+  let txtPath = null;
+
+  if (mode === "pdf" || mode === "both") {
+    pdfPath = await savePdf(blob, identifier, subfolder);
+  }
+  if (mode === "txt" || mode === "both") {
+    const text = await extractPdfText(blob);
+    if (text != null) {
+      txtPath = await saveText(text, identifier, subfolder);
+    } else if (mode === "txt") {
+      // Extraction failed in txt-only mode — keep the PDF so nothing is lost.
+      console.info(`[${identifier}] text extraction failed; saving PDF instead`);
+      pdfPath = await savePdf(blob, identifier, subfolder);
+    }
+  }
+  return pdfPath || txtPath;
 }
 
 // Reproduce the filename normalization downloadBlob uses, without performing
@@ -691,7 +757,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           sendResponse({ ok: false, error: `Not a PDF (${await describeBlob(blob)})` });
           return;
         }
-        const filename = await downloadBlob(blob, msg.doi, msg.subfolder);
+        const filename = await downloadBlob(blob, msg.doi, msg.subfolder, "pdf");
         await updateRunResult(msg.runId, msg.doi, {
           source: "manual", filename, via: "manual-url", error: null, tryUrls: null,
         });
@@ -729,6 +795,7 @@ chrome.runtime.onConnect.addListener((port) => {
       || (msg.dois || []).map((d) => ({ type: "doi", value: d, original: d }));
 
     const subfolder = msg.subfolder || "icompletist";
+    currentDownloadMode = ["txt", "both"].includes(msg.downloadMode) ? msg.downloadMode : "pdf";
     const settings = await getSettings();
     const summary = { pmc: 0, oa: 0, institutional: 0, tdm: 0, cached: 0, unavailable: 0 };
 

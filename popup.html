@@ -24,6 +24,13 @@
     <label for="subfolder">Save to subfolder of Downloads/</label>
     <input type="text" id="subfolder" placeholder="icompletist" value="icompletist">
 
+    <label for="download-mode" style="margin-top: 12px;">Download as</label>
+    <select id="download-mode">
+      <option value="pdf">PDF only</option>
+      <option value="txt">Text only (.txt — for text mining)</option>
+      <option value="both">PDF + Text</option>
+    </select>
+
     <!-- FETCH BY ID PANEL -->
     <div id="id-panel">
       <label for="dois" style="margin-top: 12px;">Paste identifiers or URLs (DOI, arXiv ID, OpenReview ID, or article URL — one per line)</label>

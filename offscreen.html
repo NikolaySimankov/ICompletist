@@ -1,0 +1,10 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>ICompletist — PDF text extraction</title></head>
+<body>
+  <!-- Hidden offscreen document. Runs pdf.js (with a real module worker) to
+       extract raw text from downloaded PDFs, since the service worker can't
+       host pdf.js's worker itself. Driven by messages from background.js. -->
+  <script type="module" src="offscreen.js"></script>
+</body>
+</html>

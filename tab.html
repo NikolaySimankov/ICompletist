@@ -42,6 +42,13 @@
     <label for="subfolder">Save to subfolder of Downloads/</label>
     <input type="text" id="subfolder" placeholder="icompletist" value="icompletist">
 
+    <label for="download-mode" style="margin-top: 12px;">Download as</label>
+    <select id="download-mode">
+      <option value="pdf">PDF only</option>
+      <option value="txt">Text only (.txt — for text mining)</option>
+      <option value="both">PDF + Text</option>
+    </select>
+
     <div id="id-panel">
       <label for="dois" style="margin-top: 16px;">Paste identifiers or URLs (DOI, arXiv ID, OpenReview ID, or article URL)</label>
       <textarea id="dois" rows="12" placeholder="10.1038/nature12373&#10;arXiv:2103.00020&#10;openreview.net/forum?id=...&#10;https://www.nature.com/articles/s41586-020-2649-2&#10;10.1109/...  (IEEE)"></textarea>

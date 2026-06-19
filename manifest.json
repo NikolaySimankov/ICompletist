@@ -1,13 +1,14 @@
 {
   "manifest_version": 3,
   "name": "ICompletist",
-  "version": "2.0.5",
-  "description": "Search and bulk-fetch scientific articles legally. v2 adds multi-database search, optional ENSURE filter, Crossref ENRICH, URL input, OpenAlex + citation_pdf_url landing-page scraping, per-source throttling, skip-if-downloaded, keepalive, run resume, per-run delete, query recovery, and dark mode.",
+  "version": "2.1.0",
+  "description": "Search and bulk-fetch scientific articles legally. v2 adds multi-database search, ENSURE filter, Crossref ENRICH, URL input, OpenAlex, per-source throttling, run resume/recovery, dark mode, and PDF→text extraction (pdf.js) with a PDF / TXT / both download option.",
   "permissions": [
     "storage",
     "downloads",
     "cookies",
-    "tabs"
+    "tabs",
+    "offscreen"
   ],
   "host_permissions": [
     "https://api.unpaywall.org/*",
