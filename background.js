@@ -141,18 +141,37 @@ async function blobToDataUrl(blob) {
   });
 }
 
+// Resolve the actual on-disk absolute path for a download id. Chrome sets the
+// final filename (including the Downloads root and any uniquify suffix) shortly
+// after the download starts; poll briefly until it's available.
+async function getDownloadPath(downloadId) {
+  if (downloadId == null) return null;
+  for (let i = 0; i < 6; i++) {
+    try {
+      const items = await chrome.downloads.search({ id: downloadId });
+      const f = items && items[0] && items[0].filename;
+      if (f) return f;
+    } catch { /* ignore */ }
+    await new Promise((r) => setTimeout(r, 120));
+  }
+  return null;
+}
+
 async function downloadBlob(blob, identifier, subfolder) {
   const url = await blobToDataUrl(blob);
   const safe = identifier.replace(/[^a-z0-9]+/gi, "_");
   const folder = (subfolder || "icompletist").replace(/[<>:"|?*\x00-\x1f]/g, "_");
   const filename = `${folder}/${safe}.pdf`;
-  await chrome.downloads.download({
+  const downloadId = await chrome.downloads.download({
     url,
     filename,
     saveAs: false,
     conflictAction: "uniquify",
   });
-  return filename;
+  // Prefer the real absolute path (so RIS export gets a working file:// link
+  // with no extra configuration, and it reflects any uniquify rename).
+  const absolute = await getDownloadPath(downloadId);
+  return absolute || filename;
 }
 
 // Reproduce the filename normalization downloadBlob uses, without performing
@@ -191,13 +210,8 @@ async function checkAlreadyDownloaded(identifier, subfolder) {
     });
     const hit = results.find((r) => r.exists);
     if (!hit) return null;
-    // Normalize the absolute path Chrome returned into a relative tail that
-    // matches what downloadBlob would have returned, so downstream code
-    // (history, RIS export's L1 file:// builder) keeps working unchanged.
-    const normalized = hit.filename.replace(/\\/g, "/");
-    const marker = `/${folder.toLowerCase()}/`;
-    const idx = normalized.toLowerCase().lastIndexOf(marker);
-    return idx >= 0 ? normalized.slice(idx + 1) : normalized;
+    // Return the real absolute path so RIS export emits a working file:// link.
+    return hit.filename || null;
   } catch (e) {
     console.warn(`checkAlreadyDownloaded(${identifier}) error:`, e);
     return null;

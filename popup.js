@@ -642,14 +642,20 @@ async function attachFile(idx, file) {
   const subfolder = run.subfolder || ui.subfolderField.value || "icompletist";
   try {
     const dataUrl = await blobToDataUrl(file);
-    await chrome.downloads.download({
+    const downloadId = await chrome.downloads.download({
       url: dataUrl,
       filename: manualFilename(e.doi, subfolder),
       saveAs: false,
       conflictAction: "uniquify",
     });
+    // Capture the real absolute path so RIS export gets a working file:// link.
+    let stored = manualFilename(e.doi, subfolder);
+    try {
+      const items = await chrome.downloads.search({ id: downloadId });
+      if (items && items[0] && items[0].filename) stored = items[0].filename;
+    } catch { /* fall back to relative */ }
     await updateRunResult(run.id, e.doi, {
-      source: "manual", filename: manualFilename(e.doi, subfolder), via: "manual-file", error: null, tryUrls: null,
+      source: "manual", filename: stored, via: "manual-file", error: null, tryUrls: null,
     });
     setAttachStatus(idx, "Saved ✓", "ok");
     // storage.onChanged re-renders the run.
