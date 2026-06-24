@@ -44,8 +44,15 @@ const ui = {
   // Search-mode bindings:
   modeIdBtn: $("mode-id-btn"),
   modeSearchBtn: $("mode-search-btn"),
+  modeConvertBtn: $("mode-convert-btn"),
   idPanel: $("id-panel"),
   searchPanel: $("search-panel"),
+  convertPanel: $("convert-panel"),
+  downloadModeGroup: $("download-mode-group"),
+  pdfFiles: $("pdf-files"),
+  convertBtn: $("convert-btn"),
+  convertClearBtn: $("convert-clear-btn"),
+  convertResults: $("convert-results"),
   queryText: $("query-text"),
   queryError: $("query-error"),
   yearFrom: $("year-from"),
@@ -140,13 +147,19 @@ function setMode(mode) {
   currentMode = mode;
   ui.modeIdBtn?.classList.toggle("active", mode === "id");
   ui.modeSearchBtn?.classList.toggle("active", mode === "search");
+  ui.modeConvertBtn?.classList.toggle("active", mode === "convert");
   if (ui.idPanel) ui.idPanel.hidden = mode !== "id";
   if (ui.searchPanel) ui.searchPanel.hidden = mode !== "search";
+  if (ui.convertPanel) ui.convertPanel.hidden = mode !== "convert";
+  // The PDF/TXT/both download selector only applies to fetch/search downloads,
+  // not the standalone PDF→TXT converter.
+  if (ui.downloadModeGroup) ui.downloadModeGroup.hidden = mode === "convert";
   chrome.storage.local.set({ mode });
 }
 
 ui.modeIdBtn?.addEventListener("click", () => setMode("id"));
 ui.modeSearchBtn?.addEventListener("click", () => setMode("search"));
+ui.modeConvertBtn?.addEventListener("click", () => setMode("convert"));
 
 // Restore last-used mode on load.
 chrome.storage.local.get({ mode: "id" }, ({ mode }) => setMode(mode));
@@ -296,6 +309,77 @@ ui.searchBtn?.addEventListener("click", async () => {
 ui.searchClearBtn?.addEventListener("click", () => {
   if (ui.queryText) ui.queryText.value = "";
   showQueryError("");
+});
+
+// ---- PDF → TXT converter (no history; one-off conversions) ----
+
+function sanitizeSubfolder(value) {
+  return (value || "icompletist")
+    .replace(/^[/\\]+|[/\\]+$/g, "")
+    .replace(/[<>:"|?*\x00-\x1f]/g, "_");
+}
+
+function txtNameFor(pdfFileName) {
+  // Keep the original base name, just drop .pdf and strip path-illegal chars.
+  return pdfFileName.replace(/\.pdf$/i, "").replace(/[<>:"|?*\x00-\x1f/\\]/g, "_");
+}
+
+async function fileToBase64(file) {
+  const dataUrl = await blobToDataUrl(file);
+  const i = dataUrl.indexOf(",");
+  return i >= 0 ? dataUrl.slice(i + 1) : dataUrl;
+}
+
+ui.convertClearBtn?.addEventListener("click", () => {
+  if (ui.pdfFiles) ui.pdfFiles.value = "";
+  if (ui.convertResults) ui.convertResults.innerHTML = "";
+});
+
+ui.convertBtn?.addEventListener("click", async () => {
+  const files = [...(ui.pdfFiles?.files || [])];
+  if (!files.length) { alert("Choose one or more PDF files to convert."); return; }
+
+  const subfolder = sanitizeSubfolder(ui.subfolderField.value);
+  chrome.storage.local.set({ subfolder });
+  ui.convertResults.innerHTML = "";
+
+  ui.convertBtn.disabled = true;
+  try {
+    for (const file of files) {
+      const base = txtNameFor(file.name);
+      const li = document.createElement("li");
+      li.className = "convert-row";
+      const nameEl = document.createElement("span");
+      nameEl.className = "conv-name";
+      nameEl.textContent = `${base}.txt`;
+      const statusEl = document.createElement("span");
+      statusEl.className = "conv-status";
+      statusEl.textContent = "converting…";
+      li.append(nameEl, statusEl);
+      ui.convertResults.appendChild(li);
+
+      try {
+        const dataBase64 = await fileToBase64(file);
+        const resp = await chrome.runtime.sendMessage({ type: "pdf-to-text", dataBase64 });
+        if (!resp || !resp.ok) throw new Error(resp?.error || "extraction failed");
+        const text = resp.text || "";
+        const url = "data:text/plain;charset=utf-8," + encodeURIComponent(text);
+        await chrome.downloads.download({
+          url,
+          filename: `${subfolder}/${base}.txt`,
+          saveAs: false,
+          conflictAction: "uniquify",
+        });
+        statusEl.textContent = `saved · ${text.length.toLocaleString()} chars`;
+        statusEl.className = "conv-status ok";
+      } catch (e) {
+        statusEl.textContent = `failed: ${e.message}`;
+        statusEl.className = "conv-status err";
+      }
+    }
+  } finally {
+    ui.convertBtn.disabled = false;
+  }
 });
 
 // ---- Prequery: Wikidata common-name expansion ----

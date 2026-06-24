@@ -1,10 +1,12 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <title>ICompletist</title>
   <link rel="stylesheet" href="popup.css">
 </head>
+
 <body>
   <header>
     <h1>ICompletist</h1>
@@ -19,22 +21,27 @@
     <div class="mode-toggle">
       <button id="mode-id-btn" class="mode-btn active" data-mode="id">Fetch by ID</button>
       <button id="mode-search-btn" class="mode-btn" data-mode="search">Search by query</button>
+      <button id="mode-convert-btn" class="mode-btn" data-mode="convert">PDF to TXT</button>
     </div>
 
     <label for="subfolder">Save to subfolder of Downloads/</label>
     <input type="text" id="subfolder" placeholder="icompletist" value="icompletist">
 
-    <label for="download-mode" style="margin-top: 12px;">Download as</label>
-    <select id="download-mode">
-      <option value="pdf">PDF only</option>
-      <option value="txt">Text only (.txt — for text mining)</option>
-      <option value="both">PDF + Text</option>
-    </select>
+    <div id="download-mode-group">
+      <label for="download-mode" style="margin-top: 12px;">Download as</label>
+      <select id="download-mode">
+        <option value="pdf">PDF only</option>
+        <option value="txt">Text only (.txt — for text mining)</option>
+        <option value="both">PDF + Text</option>
+      </select>
+    </div>
 
     <!-- FETCH BY ID PANEL -->
     <div id="id-panel">
-      <label for="dois" style="margin-top: 12px;">Paste identifiers or URLs (DOI, arXiv ID, OpenReview ID, or article URL — one per line)</label>
-      <textarea id="dois" rows="7" placeholder="10.1038/nature12373&#10;arXiv:2103.00020&#10;openreview.net/forum?id=...&#10;https://www.nature.com/articles/s41586-020-2649-2&#10;10.1109/...  (IEEE)"></textarea>
+      <label for="dois" style="margin-top: 12px;">Paste identifiers or URLs (DOI, arXiv ID, OpenReview ID, or article
+        URL — one per line)</label>
+      <textarea id="dois" rows="7"
+        placeholder="10.1038/nature12373&#10;arXiv:2103.00020&#10;openreview.net/forum?id=...&#10;https://www.nature.com/articles/s41586-020-2649-2&#10;10.1109/...  (IEEE)"></textarea>
       <div class="row">
         <button id="fetch-btn" class="primary">Fetch articles</button>
         <button id="clear-btn">Clear</button>
@@ -53,8 +60,10 @@
         <div id="prequery-results" class="prequery-results" hidden></div>
       </div>
 
-      <label for="query-text" style="margin-top: 12px;">Query (one group per line, lines joined by AND / OR / AND NOT)</label>
-      <textarea id="query-text" rows="5" placeholder="plant OR vegetation OR crop&#10;AND pathogen OR disease OR pest&#10;AND NOT wheat OR rice"></textarea>
+      <label for="query-text" style="margin-top: 12px;">Query (one group per line, lines joined by AND / OR / AND
+        NOT)</label>
+      <textarea id="query-text" rows="5"
+        placeholder="plant OR vegetation OR crop&#10;AND pathogen OR disease OR pest&#10;AND NOT wheat OR rice"></textarea>
       <div id="query-error" class="query-error" hidden></div>
 
       <div class="search-controls">
@@ -106,7 +115,9 @@
         <div class="control-group">
           <label>Precision</label>
           <div class="checkbox-row">
-            <label title="After search, drop results whose title/abstract/journal don't actually contain your query terms"><input type="checkbox" id="ensure-cb" checked> ENSURE — keep only results that match the query</label>
+            <label
+              title="After search, drop results whose title/abstract/journal don't actually contain your query terms"><input
+                type="checkbox" id="ensure-cb" checked> ENSURE — keep only results that match the query</label>
           </div>
         </div>
       </div>
@@ -116,10 +127,24 @@
         <button id="search-clear-btn">Clear</button>
       </div>
     </div>
+
+    <!-- CONVERT PDF → TXT PANEL -->
+    <div id="convert-panel" hidden>
+      <label for="pdf-files" style="margin-top: 12px;">Select PDF files — each is saved as a .txt of the same name in
+        the subfolder above</label>
+      <input type="file" id="pdf-files" accept="application/pdf" multiple>
+      <div class="row">
+        <button id="convert-btn" class="primary">Convert to TXT</button>
+        <button id="convert-clear-btn">Clear</button>
+      </div>
+      <ul id="convert-results"></ul>
+    </div>
   </section>
 
   <section id="progress-section" hidden>
-    <div class="progress-bar"><div id="progress-fill"></div></div>
+    <div class="progress-bar">
+      <div id="progress-fill"></div>
+    </div>
     <div id="progress-text">Initializing…</div>
     <div class="stats">
       <span class="stat pmc">PMC: <b id="stat-pmc">0</b></span>
@@ -158,4 +183,5 @@
 
   <script src="popup.js" type="module"></script>
 </body>
+
 </html>

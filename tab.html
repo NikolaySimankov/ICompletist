@@ -37,17 +37,20 @@
     <div class="mode-toggle">
       <button id="mode-id-btn" class="mode-btn active" data-mode="id">Fetch by ID</button>
       <button id="mode-search-btn" class="mode-btn" data-mode="search">Search by query</button>
+      <button id="mode-convert-btn" class="mode-btn" data-mode="convert">PDF to TXT</button>
     </div>
 
     <label for="subfolder">Save to subfolder of Downloads/</label>
     <input type="text" id="subfolder" placeholder="icompletist" value="icompletist">
 
-    <label for="download-mode" style="margin-top: 12px;">Download as</label>
-    <select id="download-mode">
-      <option value="pdf">PDF only</option>
-      <option value="txt">Text only (.txt — for text mining)</option>
-      <option value="both">PDF + Text</option>
-    </select>
+    <div id="download-mode-group">
+      <label for="download-mode" style="margin-top: 12px;">Download as</label>
+      <select id="download-mode">
+        <option value="pdf">PDF only</option>
+        <option value="txt">Text only (.txt — for text mining)</option>
+        <option value="both">PDF + Text</option>
+      </select>
+    </div>
 
     <div id="id-panel">
       <label for="dois" style="margin-top: 16px;">Paste identifiers or URLs (DOI, arXiv ID, OpenReview ID, or article URL)</label>
@@ -132,6 +135,17 @@
         <button id="search-btn" class="primary">Run search</button>
         <button id="search-clear-btn">Clear</button>
       </div>
+    </div>
+
+    <!-- CONVERT PDF → TXT PANEL -->
+    <div id="convert-panel" hidden>
+      <label for="pdf-files" style="margin-top: 16px;">Select PDF files — each is saved as a .txt of the same name in the subfolder above</label>
+      <input type="file" id="pdf-files" accept="application/pdf" multiple>
+      <div class="row">
+        <button id="convert-btn" class="primary">Convert to TXT</button>
+        <button id="convert-clear-btn">Clear</button>
+      </div>
+      <ul id="convert-results"></ul>
     </div>
   </section>
 

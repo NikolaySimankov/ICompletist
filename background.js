@@ -683,7 +683,7 @@ async function processItem(item, settings, subfolder, s2Cache) {
   // matches exactly.
   const displayId = workItem.type === "arxiv" ? `arxiv:${workItem.value}`
     : workItem.type === "openreview" ? `openreview:${workItem.value}`
-    : workItem.value;
+      : workItem.value;
 
   let result;
   const existing = await checkAlreadyDownloaded(displayId, subfolder);
@@ -747,6 +747,22 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   // automated cascade couldn't fetch; we download it under ICompletist's
   // naming convention into the run's subfolder and flip the result to
   // "manual" so it joins the run table + RIS export.
+  // Standalone PDF → text (the "PDF to TXT" tab). The popup has the file but
+  // can't host pdf.js's worker, so it relays the bytes here; we run them
+  // through the offscreen extractor and return the text. No history is touched.
+  if (msg.type === "pdf-to-text") {
+    (async () => {
+      try {
+        await ensureOffscreen();
+        const resp = await chrome.runtime.sendMessage({ type: "extract-text", dataBase64: msg.dataBase64 });
+        sendResponse(resp || { ok: false, error: "no response from extractor" });
+      } catch (e) {
+        sendResponse({ ok: false, error: e.message });
+      }
+    })();
+    return true;
+  }
+
   if (msg.type === "manual-url") {
     (async () => {
       try {
