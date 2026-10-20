@@ -15,6 +15,7 @@ import { arxivFetch, arxivIdFromDoi } from "./lib/arxiv.js";
 import { biorxivFetch, isBiorxivDoi } from "./lib/biorxiv.js";
 import { openreviewFetch } from "./lib/openreview.js";
 import { ieeeOaFetch, isIeeeDoi } from "./lib/ieee.js";
+import { ieeeSessionFetch } from "./lib/ieee_session.js";
 import { elsevierTdmFetch } from "./lib/elsevier.js";
 import { springerTdmFetch } from "./lib/springer.js";
 import { wileyTdmFetch } from "./lib/wiley.js";
@@ -469,6 +470,24 @@ async function handleDoi(item, settings, subfolder, s2Cache) {
       console.warn(`[${doi}] IEEE error:`, e);
     }
   }
+  // IEEE subscription content via the user's own session (VPN / signed in).
+  // No key needed; succeeds only when the request is authenticated, exactly
+  // like opening stamp.jsp in the browser.
+  if (isIeeeDoi(doi)) {
+    console.info(`[${doi}] trying IEEE stamp.jsp via your browser session`);
+    try {
+      await throttle("ieee");
+      const r = await ieeeSessionFetch(doi);
+      if (r.found) {
+        const filename = await downloadBlob(r.blob, doi, subfolder);
+        return { doi, source: "institutional", publisher: "ieee", via: "ieee-stamp", filename };
+      }
+      if (r.articleUrl) recordUrl(r.articleUrl, "IEEE Xplore article");
+      console.info(`[${doi}] IEEE session miss:`, r.reason);
+    } catch (e) {
+      console.warn(`[${doi}] IEEE session error:`, e);
+    }
+  }
 
   // Step 2: Semantic Scholar cache shortcut.
   if (s2Cache && s2Cache.has(doi)) {
@@ -683,7 +702,7 @@ async function processItem(item, settings, subfolder, s2Cache) {
   // matches exactly.
   const displayId = workItem.type === "arxiv" ? `arxiv:${workItem.value}`
     : workItem.type === "openreview" ? `openreview:${workItem.value}`
-      : workItem.value;
+    : workItem.value;
 
   let result;
   const existing = await checkAlreadyDownloaded(displayId, subfolder);
@@ -747,7 +766,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   // automated cascade couldn't fetch; we download it under ICompletist's
   // naming convention into the run's subfolder and flip the result to
   // "manual" so it joins the run table + RIS export.
-  // Standalone PDF → text (the "PDF to TXT" tab). The popup has the file but
+  // Standalone PDF → text (the "PDF → TXT" tab). The popup has the file but
   // can't host pdf.js's worker, so it relays the bytes here; we run them
   // through the offscreen extractor and return the text. No history is touched.
   if (msg.type === "pdf-to-text") {
